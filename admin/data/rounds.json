@@ -1,0 +1,20 @@
+[
+    {
+        "id": 1,
+        "round_number": 1,
+        "round_name": "الجولة الأولى",
+        "is_active": 1
+    },
+    {
+        "id": 2,
+        "round_number": 2,
+        "round_name": "الجولة الثانية",
+        "is_active": 1
+    },
+    {
+        "id": 3,
+        "round_number": 3,
+        "round_name": "الجولة الثالثة",
+        "is_active": 1
+    }
+]

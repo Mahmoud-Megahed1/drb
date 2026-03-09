@@ -1,0 +1,67 @@
+{
+    "frame_image": "images\/settings\/frame_1767015712.jpeg",
+    "elements": {
+        "personal_photo": {
+            "enabled": true,
+            "x": 50,
+            "y": 62,
+            "width": 52,
+            "height": 28,
+            "shape": "circle",
+            "border_color": "#ffffff",
+            "border_width": 4
+        },
+        "participant_name": {
+            "enabled": true,
+            "x": 18,
+            "y": 6,
+            "font_size": 22,
+            "color": "#ffffff"
+        },
+        "registration_id": {
+            "enabled": true,
+            "x": 49,
+            "y": 87,
+            "font_size": 30,
+            "color": "#FFFFFF"
+        },
+        "car_type": {
+            "enabled": true,
+            "x": 81,
+            "y": 95,
+            "font_size": 18,
+            "color": "#fafafa"
+        },
+        "car_image": {
+            "enabled": false,
+            "x": 50,
+            "y": 50,
+            "width": 30,
+            "height": 20
+        },
+        "plate_number": {
+            "enabled": true,
+            "x": 84,
+            "y": 6,
+            "font_size": 18,
+            "color": "#FFFFFF"
+        },
+        "governorate": {
+            "enabled": true,
+            "x": 11,
+            "y": 95,
+            "font_size": 18,
+            "color": "#FFFFFF"
+        }
+    },
+    "form_settings": {
+        "is_open": true,
+        "open_date": null,
+        "close_date": null,
+        "link_expiry_days": 5
+    },
+    "form_titles": {
+        "main_title": "استمارة تسجيل",
+        "sub_title": "حفلة رأس السنة على حلبة نادي بلاد الرافدين لرياضة المحركات"
+    }
+}

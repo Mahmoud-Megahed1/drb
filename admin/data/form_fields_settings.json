@@ -1,0 +1,12 @@
+{
+    "personal_photo_enabled": true,
+    "personal_photo_required": true,
+    "instagram_enabled": true,
+    "instagram_required": true,
+    "license_images_enabled": true,
+    "license_images_required": true,
+    "id_front_enabled": true,
+    "id_front_required": true,
+    "id_back_enabled": true,
+    "id_back_required": true
+}

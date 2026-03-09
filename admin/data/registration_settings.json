@@ -1,0 +1,26 @@
+{
+    "max_registrations": 0,
+    "is_open": true,
+    "closed_message": "عذراً، انتهت صلاحية التسجيل",
+    "max_tickets": 0,
+    "max_regular_tickets": 0,
+    "max_vip_tickets": 0,
+    "max_offer_tickets": 0,
+    "participation_types": [
+        {
+            "id": "free_show",
+            "label": "المشاركة بالاستعراض الحر",
+            "enabled": true
+        },
+        {
+            "id": "special_car",
+            "label": "المشاركة كسيارة مميزة فقط بدون استعراض",
+            "enabled": true
+        },
+        {
+            "id": "burnout",
+            "label": "المشاركة بفعالية Burnout",
+            "enabled": true
+        }
+    ]
+}

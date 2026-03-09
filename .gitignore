@@ -1,0 +1,56 @@
+# Logs and temporary files
+logs/
+*.log
+
+# IDE files
+.idea/
+.vscode/
+*.code-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Visual Studio
+.vs/
+*.sln
+*.user
+*.suo
+
+# PHP
+vendor/
+composer.lock
+
+# Backup files
+*.bak
+*.backup
+*.tmp
+*~
+*.txt
+*.zip
+
+# Environment files
+.env
+.env.local
+
+# Databases
+*.db
+database/app.db
+include/drb2.db
+
+# Deployment Scripts (containing credentials)
+*DEPLOY*.ps1
+
+# Uploads
+uploads/
+
+# Settings and Logs in data dir
+admin/data/admins.json
+admin/data/whatsapp_log.json
+admin/data/whatsapp_messages.json
+admin/data/whatsapp_failed_queue.json
+admin/data/entry_logs.json
+admin/data/entry_exit_logs.json
+admin/data/admin_actions.json
+admin/data/message_logs.json

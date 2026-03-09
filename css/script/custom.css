@@ -1,0 +1,76 @@
+/*=======================
+Theme: Crud Xml Fork 
+Author: Patrick Roux
+Author Website: patrickroux.fr
+Version: 1.00
+
+=======================
+CSS Style Structure
+- GENERAL
+- SIGNIN
+
+=======================*/
+
+/*--------------------------
+---------- GENERAL ---------
+--------------------------*/
+
+body{
+	background-color: #fcfcfc;
+	color: #444;
+	font-family:Cairo;
+}
+
+.myform{
+	background: #f0f0f0;
+	margin-bottom: 30px;
+}
+
+
+/*--------------------------
+---------- SIGNIN ---------
+--------------------------*/
+
+
+.form-signin {
+  max-width: 330px;
+  padding: 15px;
+  margin: 0 auto;
+}
+.form-signin .form-signin-heading,
+.form-signin .checkbox {
+  margin-bottom: 10px;
+}
+.form-signin .checkbox {
+  font-weight: normal;
+}
+.form-signin .form-control {
+  position: relative;
+  height: auto;
+  -webkit-box-sizing: border-box;
+     -moz-box-sizing: border-box;
+          box-sizing: border-box;
+  padding: 10px;
+  font-size: 16px;
+}
+.form-signin .form-control:focus {
+  z-index: 2;
+}
+.form-signin input[type="email"] {
+  margin-bottom: -1px;
+  border-bottom-right-radius: 0;
+  border-bottom-left-radius: 0;
+}
+.form-signin input[type="password"] {
+  margin-bottom: 10px;
+}
+
+.form-horizontal .control-label {
+    text-align: right;
+}
+div.dataTables_wrapper div.dataTables_filter {
+    text-align: left;
+}
+div.dataTables_wrapper div.dataTables_paginate {
+    text-align: left;
+}
