@@ -880,11 +880,28 @@ class MemberService {
      */
     public static function updateManualStats($memberId, $championshipsCount) {
         $pdo = db();
+        
+        $desiredTotal = $championshipsCount === '' ? 0 : (int)$championshipsCount;
+        
+        // Calculate current derived total *without* the manual override
+        $stmt = $pdo->prepare("
+            SELECT (
+                COALESCE(m.championships_participated, 0) + 
+                (SELECT COUNT(*) FROM registrations r WHERE r.member_id = m.id AND r.status = 'approved' AND r.is_active = 1)
+            ) as derived_count
+            FROM members m WHERE m.id = ?
+        ");
+        $stmt->execute([$memberId]);
+        $derivedCount = (int) $stmt->fetchColumn();
+        
+        // Calculate what the manual offset should be
+        $newManualOffset = $desiredTotal - $derivedCount;
+        if ($newManualOffset < 0) $newManualOffset = 0; // Prevent negative display if they type a number lower than the DB reality, or handle as needed
+        // Actually, allowing negative might be necessary to fix errors. Let's allow it in case they want to "remove" a DB counted one.
+        $newManualOffset = $desiredTotal - $derivedCount;
+
         $stmt = $pdo->prepare("UPDATE members SET manual_championships_count = ? WHERE id = ?");
-        $stmt->execute([
-            $championshipsCount === '' ? 0 : (int)$championshipsCount, 
-            $memberId
-        ]);
+        $stmt->execute([$newManualOffset, $memberId]);
         
         // Sync to JSON for scanners
         self::syncToJson($memberId);
@@ -909,15 +926,48 @@ class MemberService {
         // Auto-add manual_rounds_count if it doesn't exist
         try {
             $pdo->exec("ALTER TABLE members ADD COLUMN manual_rounds_count INTEGER DEFAULT 0");
-        } catch (\Exception $e) {
-            // Column already exists or other non-fatal error
+        } catch (\Exception $e) {}
+        
+        $desiredTotal = $roundsCount === '' ? 0 : (int)$roundsCount;
+        
+        // Calculate derived rounds count without the manual override
+        $stmt = $pdo->prepare("SELECT permanent_code FROM members WHERE id = ?");
+        $stmt->execute([$memberId]);
+        $permanentCode = $stmt->fetchColumn();
+        
+        $identifiers = [$permanentCode];
+        $stmtReg = $pdo->prepare("SELECT session_badge_token FROM registrations WHERE member_id = ? AND session_badge_token IS NOT NULL");
+        $stmtReg->execute([$memberId]);
+        while ($row = $stmtReg->fetch(PDO::FETCH_ASSOC)) {
+            $identifiers[] = $row['session_badge_token'];
         }
         
+        $roundsPlaceholder = implode(',', array_fill(0, count($identifiers), '?'));
+        $stmtRounds = $pdo->prepare("
+            SELECT COUNT(*) FROM round_logs rl
+            JOIN participants p ON rl.participant_id = p.id
+            WHERE (p.registration_code = ? OR p.badge_id IN ($roundsPlaceholder))
+            AND rl.action = 'enter'
+        ");
+        $roundsParams = array_merge([$permanentCode], $identifiers);
+        $stmtRounds->execute($roundsParams);
+        $derivedRoundsDB = (int) $stmtRounds->fetchColumn();
+        
+        // Add JSON historical rounds
+        $derivedRoundsJSON = 0;
+        $membersFile = __DIR__ . '/../admin/data/members.json';
+        if (file_exists($membersFile)) {
+            $mJson = json_decode(file_get_contents($membersFile), true) ?? [];
+            if (isset($mJson[$permanentCode]) && !empty($mJson[$permanentCode]['total_rounds_all_time'])) {
+                $derivedRoundsJSON = intval($mJson[$permanentCode]['total_rounds_all_time']);
+            }
+        }
+        
+        $derivedCount = $derivedRoundsDB + $derivedRoundsJSON;
+        $newManualOffset = $desiredTotal - $derivedCount;
+        
         $stmt = $pdo->prepare("UPDATE members SET manual_rounds_count = ? WHERE id = ?");
-        $stmt->execute([
-            $roundsCount === '' ? 0 : (int)$roundsCount, 
-            $memberId
-        ]);
+        $stmt->execute([$newManualOffset, $memberId]);
         
         // Sync to JSON for scanners
         self::syncToJson($memberId);
@@ -1444,15 +1494,26 @@ class MemberService {
 
         // Detailed Images Sync
         $latestReg = $reg ?: null;
+        
+        $resolveImagePath = function($dbValue, $jsonValue) {
+            if (!empty($dbValue)) return (string)$dbValue;
+            if (!empty($jsonValue) && file_exists(__DIR__ . '/../' . ltrim($jsonValue, '/'))) {
+                return (string)$jsonValue;
+            }
+            return '';
+        };
+
         $memberRecord['images'] = [
-            'personal_photo' => $finalPhoto,
-            'front_image' => $latestReg['front_image'] ?? $memberRecord['images']['front_image'] ?? '',
-            'side_image' => $latestReg['side_image'] ?? $memberRecord['images']['side_image'] ?? '',
-            'back_image' => $latestReg['back_image'] ?? $memberRecord['images']['back_image'] ?? '',
-            'edited_image' => $latestReg['edited_image'] ?? $memberRecord['images']['edited_image'] ?? '',
-            'acceptance_image' => $latestReg['acceptance_image'] ?? $memberRecord['images']['acceptance_image'] ?? '',
-            'national_id_front' => $member['national_id_front'] ?? $memberRecord['images']['national_id_front'] ?? '',
-            'national_id_back' => $member['national_id_back'] ?? $memberRecord['images']['national_id_back'] ?? ''
+            'personal_photo' => $resolveImagePath($finalPhoto, $memberRecord['images']['personal_photo'] ?? ''),
+            'front_image' => $resolveImagePath($latestReg['front_image'] ?? null, $memberRecord['images']['front_image'] ?? ''),
+            'side_image' => $resolveImagePath($latestReg['side_image'] ?? null, $memberRecord['images']['side_image'] ?? ''),
+            'back_image' => $resolveImagePath($latestReg['back_image'] ?? null, $memberRecord['images']['back_image'] ?? ''),
+            'edited_image' => $resolveImagePath($latestReg['edited_image'] ?? null, $memberRecord['images']['edited_image'] ?? ''),
+            'acceptance_image' => $resolveImagePath($latestReg['acceptance_image'] ?? null, $memberRecord['images']['acceptance_image'] ?? ''),
+            'national_id_front' => $resolveImagePath($member['national_id_front'] ?? null, $memberRecord['images']['national_id_front'] ?? ''),
+            'national_id_back' => $resolveImagePath($member['national_id_back'] ?? null, $memberRecord['images']['national_id_back'] ?? ''),
+            'license_front' => $resolveImagePath($latestReg['license_front'] ?? null, $memberRecord['images']['license_front'] ?? ''),
+            'license_back' => $resolveImagePath($latestReg['license_back'] ?? null, $memberRecord['images']['license_back'] ?? '')
         ];
         
         $membersData[$code] = $memberRecord;
@@ -1483,13 +1544,15 @@ class MemberService {
                     $d['participation_type'] = $reg['participation_type'];
                     $d['status'] = $reg['status'];
                     $d['personal_photo'] = $finalPhoto;
-                    $d['front_image'] = $reg['front_image'] ?? $d['front_image'] ?? '';
-                    $d['side_image'] = $reg['side_image'] ?? $d['side_image'] ?? '';
-                    $d['back_image'] = $reg['back_image'] ?? $d['back_image'] ?? '';
-                    $d['edited_image'] = $reg['edited_image'] ?? $d['edited_image'] ?? '';
-                    $d['acceptance_image'] = $reg['acceptance_image'] ?? $d['acceptance_image'] ?? '';
-                    $d['national_id_front'] = $member['national_id_front'] ?? $d['national_id_front'] ?? '';
-                    $d['national_id_back'] = $member['national_id_back'] ?? $d['national_id_back'] ?? '';
+                    $d['front_image'] = (string)$reg['front_image'];
+                    $d['side_image'] = (string)$reg['side_image'];
+                    $d['back_image'] = (string)$reg['back_image'];
+                    $d['edited_image'] = (string)$reg['edited_image'];
+                    $d['acceptance_image'] = (string)$reg['acceptance_image'];
+                    $d['national_id_front'] = (string)$member['national_id_front'];
+                    $d['national_id_back'] = (string)$member['national_id_back'];
+                    $d['license_front'] = $memberRecord['images']['license_front'] ?? '';
+                    $d['license_back'] = $memberRecord['images']['license_back'] ?? '';
                     
                     // Add structured images array for dashboard
                     $d['images'] = [
@@ -1503,8 +1566,8 @@ class MemberService {
                         'national_id_back' => $d['national_id_back'],
                         'id_front' => $d['id_front'] ?? $d['images']['id_front'] ?? '',
                         'id_back' => $d['id_back'] ?? $d['images']['id_back'] ?? '',
-                        'license_front' => $d['license_front'] ?? $d['images']['license_front'] ?? '',
-                        'license_back' => $d['license_back'] ?? $d['images']['license_back'] ?? ''
+                        'license_front' => $d['license_front'],
+                        'license_back' => $d['license_back']
                     ];
                     $d['images'] = array_filter($d['images']); // Remove empty paths
 
@@ -1539,6 +1602,8 @@ class MemberService {
                     'acceptance_image' => $reg['acceptance_image'] ?? '',
                     'national_id_front' => $member['national_id_front'] ?? '',
                     'national_id_back' => $member['national_id_back'] ?? '',
+                    'license_front' => $memberRecord['images']['license_front'] ?? '',
+                    'license_back' => $memberRecord['images']['license_back'] ?? '',
                     'badge_token' => $code
                 ];
 
@@ -1551,10 +1616,8 @@ class MemberService {
                     'acceptance_image' => $dataNew['acceptance_image'],
                     'national_id_front' => $dataNew['national_id_front'],
                     'national_id_back' => $dataNew['national_id_back'],
-                    'id_front' => $reg['id_front'] ?? '',
-                    'id_back' => $reg['id_back'] ?? '',
-                    'license_front' => $reg['license_front'] ?? '',
-                    'license_back' => $reg['license_back'] ?? ''
+                    'license_front' => $dataNew['license_front'],
+                    'license_back' => $dataNew['license_back']
                 ]);
 
                 $dataJson[] = $dataNew;

@@ -5,8 +5,15 @@
  */
 
 // Enable error reporting but send to JSON
+// ONLY throw on actual errors, NOT on warnings/notices
 set_error_handler(function($severity, $message, $file, $line) {
-    throw new ErrorException($message, 0, $severity, $file, $line);
+    // Only throw for real errors (E_ERROR, E_PARSE, E_CORE_ERROR, E_USER_ERROR)
+    if ($severity & (E_ERROR | E_PARSE | E_CORE_ERROR | E_COMPILE_ERROR | E_USER_ERROR)) {
+        throw new ErrorException($message, 0, $severity, $file, $line);
+    }
+    // Log warnings/notices but don't crash
+    error_log("PHP Warning in approve_registration: [$severity] $message in $file:$line");
+    return true; // Don't execute PHP's internal error handler
 });
 
 try {
@@ -22,7 +29,6 @@ set_time_limit(300);
 ini_set('max_execution_time', 300);
 ignore_user_abort(true);
 
-require_once 'wasender.php';
 require_once __DIR__ . '/include/AdminLogger.php';
 require_once __DIR__ . '/include/db.php';
 require_once __DIR__ . '/include/helpers.php';

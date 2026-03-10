@@ -133,6 +133,7 @@ $currentPage = 'pending_messages';
         <label style="margin: 0;"><strong>عرض:</strong></label>
         <select id="filterSelect" class="form-control" style="width: 200px;" onchange="loadMessages()">
             <option value="pending">المعلقة فقط</option>
+            <option value="failed_permanent">فشلت نهائياً</option>
             <option value="sent">المرسلة</option>
             <option value="all">الكل</option>
         </select>
@@ -237,10 +238,13 @@ function renderMessages(messages) {
     let html = '';
     messages.forEach(msg => {
         const isSent = msg.status === 'sent';
+        const isFailed = msg.status === 'failed_permanent';
         const typeLabels = { text: '📝 نص', image: '🖼️ صورة', document: '📄 مستند' };
         const typeLabel = typeLabels[msg.type] || msg.type;
         const waLink = `https://wa.me/${msg.phone}?text=${encodeURIComponent(msg.data?.text || msg.data?.caption || '')}`;
-        
+        let statusLabel = '<span class="label label-danger">⏳ معلقة</span>';
+        if (isSent) statusLabel = '<span class="label label-success">✅ تم الإرسال</span>';
+        else if (isFailed) statusLabel = '<span class="label label-default" style="background:#333;">❌ فشل نهائي</span>';
         html += `
         <div class="msg-card ${isSent ? 'sent' : ''}" id="msg_${msg.id}">
             <div class="msg-header">
@@ -248,7 +252,7 @@ function renderMessages(messages) {
                     <span class="msg-name">👤 ${msg.name || 'غير معروف'}</span>
                     ${msg.wasel ? `<span class="label label-default" style="margin-right:5px;">وصل: ${msg.wasel}</span>` : ''}
                     <span class="label label-info">${typeLabel}</span>
-                    ${isSent ? '<span class="label label-success">✅ تم الإرسال</span>' : '<span class="label label-danger">⏳ معلقة</span>'}
+                    ${statusLabel}
                 </div>
                 <span class="msg-phone">${msg.phone}</span>
             </div>

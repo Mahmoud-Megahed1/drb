@@ -1,6 +1,6 @@
 <?php
 error_reporting(E_ALL);
-ini_set('display_errors', 1);
+ini_set('display_errors', 0); // Disable display to prevent JSON corruption
 session_start();
 require_once '../include/db.php';
 require_once '../include/helpers.php';
@@ -152,6 +152,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $response = ['success' => true, 'message' => 'تم تحديث عدد الجولات'];
         }
 
+        // Edit Single Car Field (Inline Edit)
+        elseif ($_POST['action'] === 'edit_car_field') {
+            $mid = $_POST['member_id'];
+            $field = $_POST['field'];
+            $value = trim($_POST['value']);
+            $regId = $_POST['registration_id'] ?? null;
+
+            $allowedCarFields = ['car_type', 'car_year', 'car_color', 'engine_size', 
+                                 'participation_type', 'plate_governorate', 'plate_letter', 'plate_number'];
+            if (!in_array($field, $allowedCarFields)) {
+                throw new Exception('حقل غير مسموح');
+            }
+
+            // Update registration if exists
+            if ($regId && is_numeric($regId)) {
+                $stmt = $pdo->prepare("UPDATE registrations SET $field = ? WHERE id = ?");
+                $stmt->execute([$value, $regId]);
+            }
+
+            // Map registration fields to member last_ fields
+            $memberField = 'last_' . $field;
+            if ($field === 'participation_type') $memberField = 'last_participation_type';
+            
+            $stmt = $pdo->prepare("UPDATE members SET $memberField = ? WHERE id = ?");
+            $stmt->execute([$value, $mid]);
+
+            MemberService::syncToJson($mid);
+            auditLog('edit_car_field', 'member', $mid, null, "$field => $value", $currentUser->id ?? null);
+            $response = ['success' => true, 'message' => 'تم تحديث ' . $field];
+        }
+
         // Generalized Upload Handler
         elseif ($_POST['action'] === 'upload_any_photo') {
             $mid = $_POST['member_id'];
@@ -161,6 +192,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
             $allowedKeys = [
                 'personal_photo', 'national_id_front', 'national_id_back',
+                'id_front', 'id_back',
                 'front_image', 'side_image', 'back_image', 'edited_image' , 'acceptance_image',
                 'license_front', 'license_back'
             ];
@@ -170,11 +202,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 throw new Exception('لم يتم رفع الملف بشكل صحيح');
             }
 
-            $subDir = ($target === 'member') ? 'members' : 'cars';
             $uploadDir = __DIR__ . '/../uploads/' . $subDir . '/';
             if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
 
             $ext = pathinfo($_FILES['photo']['name'], PATHINFO_EXTENSION);
+            $dbKey = $key;
+            if ($key === 'id_front') $dbKey = 'national_id_front';
+            if ($key === 'id_back') $dbKey = 'national_id_back';
             $filename = $code . '_' . $key . '_' . time() . '.' . $ext;
             $targetPath = $uploadDir . $filename;
 
@@ -185,14 +219,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $relativePath = 'uploads/' . $subDir . '/' . $filename;
 
             if ($target === 'member') {
-                $pdo->prepare("UPDATE members SET $key = ? WHERE id = ?")->execute([$relativePath, $mid]);
+                $pdo->prepare("UPDATE members SET $dbKey = ? WHERE id = ?")->execute([$relativePath, $mid]);
             } else {
-                $pdo->prepare("UPDATE registrations SET $key = ? WHERE member_id = ? AND is_active = 1")->execute([$relativePath, $mid]);
+                $pdo->prepare("UPDATE registrations SET $dbKey = ? WHERE member_id = ? AND is_active = 1")->execute([$relativePath, $mid]);
             }
 
             // Sync
             MemberService::syncToJson($mid);
-            auditLog('upload_image', $target, $mid, null, "$key => $relativePath", $currentUser->id ?? null);
+            auditLog('upload_image', $target, $mid, null, "$dbKey => $relativePath", $currentUser->id ?? null);
             $response = ['success' => true, 'message' => 'تم الرفع بنجاح', 'path' => $relativePath];
         }
 
@@ -204,27 +238,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             
             $allowedKeys = [
                 'personal_photo', 'national_id_front', 'national_id_back',
+                'id_front', 'id_back',
                 'front_image', 'side_image', 'back_image', 'edited_image' , 'acceptance_image',
                 'license_front', 'license_back'
             ];
             if (!in_array($key, $allowedKeys)) throw new Exception('حقل غير صالح');
 
+            $dbKey = $key;
+            if ($key === 'id_front') $dbKey = 'national_id_front';
+            if ($key === 'id_back') $dbKey = 'national_id_back';
+
+            // Find the physical path from the fully merged profile (JSON + DB)
+            $profile = MemberService::getProfile($mid);
             $currentPath = '';
-            if ($target === 'member') {
-                $stmt = $pdo->prepare("SELECT $key FROM members WHERE id = ?");
-                $stmt->execute([$mid]);
-                $currentPath = $stmt->fetchColumn();
-                $pdo->prepare("UPDATE members SET $key = NULL WHERE id = ?")->execute([$mid]);
-            } else {
-                $stmt = $pdo->prepare("SELECT $key FROM registrations WHERE member_id = ? AND is_active = 1");
-                $stmt->execute([$mid]);
-                $currentPath = $stmt->fetchColumn();
-                $pdo->prepare("UPDATE registrations SET $key = NULL WHERE member_id = ? AND is_active = 1")->execute([$mid]);
+            if ($profile) {
+                // Check all possible locations in the profile tree where this image might be stored
+                $currentPath = $profile['images'][$key] 
+                            ?? $profile['images'][$dbKey] 
+                            ?? $profile[$key] 
+                            ?? $profile[$dbKey] 
+                            ?? '';
             }
 
+            // Unlink physically if it exists
             if ($currentPath) {
-                $fullPath = __DIR__ . '/../' . ltrim($currentPath, '/');
+                $relPath = ltrim(str_replace('../', '', $currentPath), '/');
+                $fullPath = __DIR__ . '/../' . $relPath;
                 if (file_exists($fullPath)) @unlink($fullPath);
+            }
+
+            // Always clear the DB value to be safe
+            if ($target === 'member') {
+                $pdo->prepare("UPDATE members SET $dbKey = NULL WHERE id = ?")->execute([$mid]);
+            } else {
+                $pdo->prepare("UPDATE registrations SET $dbKey = NULL WHERE member_id = ? AND is_active = 1")->execute([$mid]);
             }
 
             MemberService::syncToJson($mid);
@@ -1259,15 +1306,13 @@ function editCarField(field, el) {
 
     function save() {
         const newVal = input.value.trim();
-        const postData = {
-            action: 'edit_car',
+        $.post('member_details.php?id=<?= urlencode($memberId) ?>', {
+            action: 'edit_car_field',
             member_id: MEMBER_ID,
-            registration_id: REG_ID
-        };
-        // Set all car fields to current values, then override the changed one
-        postData[field] = newVal;
-
-        $.post('member_details.php?id=<?= urlencode($memberId) ?>', postData, function(res) {
+            registration_id: REG_ID,
+            field: field,
+            value: newVal
+        }, function(res) {
             if (res.success) {
                 const span = document.createElement('span');
                 span.className = 'editable';
@@ -1433,7 +1478,7 @@ function viewImage(src) {
         </div>
     </div>
 </div>
-</script>
+
 
 </body>
 </html>

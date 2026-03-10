@@ -217,7 +217,7 @@ if (file_exists($dataFile)) {
 
 // Get logs from WhatsAppLogger
 $filters = array_filter([
-    'success' => $status === 'all' ? null : ($status === 'success'),
+    'success' => ($status === 'all' || $status === 'queued') ? null : ($status === 'success'),
     'message_type' => $messageType,
     'phone' => $phone,
     'from_date' => $fromDate,
@@ -225,6 +225,15 @@ $filters = array_filter([
 ]);
 
 $logs = $logger->getLogs($filters);
+
+// Filter for queued-only status (messages with 'Queued for sending' error)
+if ($status === 'queued') {
+    $logs = array_filter($logs, function($log) {
+        $err = $log['error_message'] ?? $log['error'] ?? '';
+        return !$log['success'] && stripos($err, 'Queued') !== false;
+    });
+    $logs = array_values($logs);
+}
 $failedQueue = $logger->getFailedQueue();
 $stats = $logger->getStats();
 
@@ -694,6 +703,7 @@ $pagedLogs = array_slice($logs, $offset, $perPage);
                 <option value="all" <?= $status === 'all' ? 'selected' : '' ?>>الكل</option>
                 <option value="success" <?= $status === 'success' ? 'selected' : '' ?>>✅ ناجحة</option>
                 <option value="failed" <?= $status === 'failed' ? 'selected' : '' ?>>❌ فاشلة</option>
+                <option value="queued" <?= $status === 'queued' ? 'selected' : '' ?>>⏳ قيد الانتظار</option>
             </select>
         </div>
         <div class="filter-group">

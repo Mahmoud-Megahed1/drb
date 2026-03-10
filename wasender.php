@@ -747,8 +747,21 @@ class WaSender {
                 'error' => $error,
                 'created_at' => date('Y-m-d H:i:s'),
                 'status' => 'pending',  // Ensure status is pending for the worker
-                'attempts' => 0
+                'attempts' => 0,
+                'max_attempts' => 3  // NEW: Max retry limit
             ];
+            
+            // Auto-clean: Remove sent messages older than 100 entries to prevent bloat
+            $sentCount = 0;
+            foreach ($queue as $qIdx => $qItem) {
+                if (($qItem['status'] ?? '') === 'sent') {
+                    $sentCount++;
+                    if ($sentCount > 100) {
+                        unset($queue[$qIdx]);
+                    }
+                }
+            }
+            $queue = array_values($queue);
             
             // Keep max 500 queued messages (prevent file bloat)
             if (count($queue) > 5000) {
@@ -925,16 +938,31 @@ class WaSender {
                     $queue = json_decode($content, true) ?: [];
                     
                     foreach ($queue as $index => $msg) {
-                        // RECOVERY: If stuck in 'processing' for more than 15 minutes, reset to pending
+                        // RECOVERY: If stuck in 'processing' for more than 2 minutes, reset to pending
                         if (isset($msg['status']) && $msg['status'] === 'processing') {
                             $lastActive = isset($msg['last_retry']) ? strtotime($msg['last_retry']) : 0;
                             if (time() - $lastActive > 120) { // 2 minutes stale timeout
-                                $queue[$index]['status'] = 'pending';
-                                $queue[$index]['error'] = 'Worker timeout recovery';
+                                // Check if max attempts exceeded
+                                $maxAttempts = $msg['max_attempts'] ?? 3;
+                                if (($msg['attempts'] ?? 0) >= $maxAttempts) {
+                                    $queue[$index]['status'] = 'failed_permanent';
+                                    $queue[$index]['error'] = 'Max attempts exceeded (' . $maxAttempts . ')';
+                                } else {
+                                    $queue[$index]['status'] = 'pending';
+                                    $queue[$index]['error'] = 'Worker timeout recovery';
+                                }
                             }
                         }
 
                         if (isset($msg['status']) && $msg['status'] === 'pending') {
+                            // NEW: Check max attempts before processing
+                            $maxAttempts = $msg['max_attempts'] ?? 3;
+                            if (($msg['attempts'] ?? 0) >= $maxAttempts) {
+                                $queue[$index]['status'] = 'failed_permanent';
+                                $queue[$index]['error'] = 'Max attempts exceeded (' . $maxAttempts . ')';
+                                continue; // Skip this message, find next pending
+                            }
+                            
                             $msgIndex = $index;
                             $targetId = $msg['id']; // Store the unique ID for safe update later
                             
@@ -1015,8 +1043,18 @@ class WaSender {
                             );
                         } else {
                             $errorText = $result['error'] ?? 'فشل الإرسال';
-                            $queueUpdated[$foundIndex]['status'] = 'pending'; // Leave pending for retry
-                            $queueUpdated[$foundIndex]['error'] = $errorText;
+                            
+                            // Check if max attempts exceeded
+                            $currentAttempts = $queueUpdated[$foundIndex]['attempts'] ?? 1;
+                            $maxAttempts = $queueUpdated[$foundIndex]['max_attempts'] ?? 3;
+                            
+                            if ($currentAttempts >= $maxAttempts) {
+                                $queueUpdated[$foundIndex]['status'] = 'failed_permanent';
+                                $queueUpdated[$foundIndex]['error'] = 'Max attempts exceeded: ' . $errorText;
+                            } else {
+                                $queueUpdated[$foundIndex]['status'] = 'pending'; // Leave pending for retry
+                                $queueUpdated[$foundIndex]['error'] = $errorText;
+                            }
                             
                             // IF RATE LIMITED: Stop processing more for this run
                             if ($result['rate_limit'] ?? false) {
@@ -1030,7 +1068,9 @@ class WaSender {
                                 return $processed; 
                             }
                             
-                             // USE THE TRUE TYPE FROM EXTRA IF AVAILABLE
+                            // USE THE TRUE TYPE FROM EXTRA IF AVAILABLE
+                            $extraInfo = $msg['extra'] ?? [];
+                            $extraInfo['db_id'] = $msg['db_id'] ?? null;
                             $trueType = $msg['type'];
                             if (isset($extraInfo['type'])) {
                                 $trueType = $extraInfo['type'];

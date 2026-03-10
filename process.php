@@ -375,19 +375,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["action"]) && $_POST["
             http_response_code(400);
             echo "🛑 رقم الهاتف مسجّل مسبقاً في هذه البطولة!";
             if (!empty($item['registration_code'])) {
-                echo "\n\nكود التسجيل الخاص بك هو: " . $item['registration_code'];
-                echo "\nاستخدمه في خانة 'تسجيل سريع' لتتمكن من تعديل بياناتك.";
+                echo "<br><br>كود التسجيل الخاص بك هو: <strong>" . $item['registration_code'] . "</strong>";
+                echo "<br>جاري جلب بياناتك السابقة تلقائياً للتعديل عليها...";
+                echo "<script>
+                        document.getElementById('registration_code').value = '" . $item['registration_code'] . "'; 
+                        window.scrollTo({top: document.getElementById('registration_code').offsetTop - 100, behavior: 'smooth'}); 
+                        setTimeout(lookupCode, 800);
+                      </script>";
             }
             exit;
         }
         
-        // Check plate uniqueness
+        // Check plate uniqueness (robust check by individual fields)
+        $plateMatch = false;
         if (isset($item['plate_full']) && $item['plate_full'] === $newPlate) {
+            $plateMatch = true;
+        } elseif (
+            isset($item['plate_number']) && isset($item['plate_letter']) && isset($item['plate_governorate']) &&
+            $item['plate_number'] === trim($_POST['plate_number']) &&
+            $item['plate_letter'] === trim($_POST['plate_letter']) &&
+            $item['plate_governorate'] === trim($_POST['plate_governorate'])
+        ) {
+            $plateMatch = true;
+        }
+
+        if ($plateMatch) {
             http_response_code(400);
-            echo "� عذراً، هذه السيارة مسجلة بالفعل في هذه البطولة!";
+            echo "🚗 عذراً، هذه السيارة (رقم اللوحة) مسجلة بالفعل في هذه البطولة!";
             if (!empty($item['registration_code'])) {
-                 echo "\n\nكود التسجيل الخاص بك هو: " . $item['registration_code'];
-                 echo "\nاستخدمه في خانة 'تسجيل سريع' لتتمكن من تعديل بياناتك.";
+                 echo "<br><br>كود التسجيل الخاص بك هو: <strong>" . $item['registration_code'] . "</strong>";
+                 echo "<br>جاري جلب بياناتك السابقة تلقائياً للتعديل عليها...";
+                 echo "<script>
+                        document.getElementById('registration_code').value = '" . $item['registration_code'] . "'; 
+                        window.scrollTo({top: document.getElementById('registration_code').offsetTop - 100, behavior: 'smooth'}); 
+                        setTimeout(lookupCode, 800);
+                      </script>";
             }
             exit;
         }
