@@ -186,14 +186,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         // Generalized Upload Handler
         elseif ($_POST['action'] === 'upload_any_photo') {
             $mid = $_POST['member_id'];
-            $target = $_POST['target_table']; // 'member' or 'registration'
+            $target = $_POST['target_table'];
             $key = $_POST['image_key'];
             $code = $_POST['permanent_code'] ?? 'temp';
 
             $allowedKeys = [
                 'personal_photo', 'national_id_front', 'national_id_back',
                 'id_front', 'id_back',
-                'front_image', 'side_image', 'back_image', 'edited_image' , 'acceptance_image',
+                'front_image', 'side_image', 'back_image', 'edited_image', 'acceptance_image',
                 'license_front', 'license_back'
             ];
             if (!in_array($key, $allowedKeys)) throw new Exception('حقل غير صالح');
@@ -202,7 +202,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 throw new Exception('لم يتم رفع الملف بشكل صحيح');
             }
 
-            $uploadDir = __DIR__ . '/../uploads/' . $subDir . '/';
+            $uploadSubDir = date('Y-m');
+            $uploadDir = __DIR__ . '/../uploads/' . $uploadSubDir . '/';
             if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
 
             $ext = pathinfo($_FILES['photo']['name'], PATHINFO_EXTENSION);
@@ -216,12 +217,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 throw new Exception('فشل في حفظ الملف');
             }
 
-            $relativePath = 'uploads/' . $subDir . '/' . $filename;
+            $relativePath = 'uploads/' . $uploadSubDir . '/' . $filename;
 
-            if ($target === 'member') {
-                $pdo->prepare("UPDATE members SET $dbKey = ? WHERE id = ?")->execute([$relativePath, $mid]);
-            } else {
-                $pdo->prepare("UPDATE registrations SET $dbKey = ? WHERE member_id = ? AND is_active = 1")->execute([$relativePath, $mid]);
+            // Update SQLite (best effort - column may not exist)
+            try {
+                if ($target === 'member') {
+                    $pdo->prepare("UPDATE members SET $dbKey = ? WHERE id = ?")->execute([$relativePath, $mid]);
+                } else {
+                    $pdo->prepare("UPDATE registrations SET $dbKey = ? WHERE member_id = ? AND is_active = 1")->execute([$relativePath, $mid]);
+                }
+            } catch (Exception $e) {
+                error_log("[UPLOAD_PHOTO] SQLite update failed (OK): " . $e->getMessage());
+            }
+
+            // CRITICAL: Also update members.json directly (this is what the page reads!)
+            $permCode = $code;
+            if ($permCode === 'temp' || is_numeric($permCode)) {
+                $stmtC = $pdo->prepare("SELECT permanent_code FROM members WHERE id = ?");
+                $stmtC->execute([$mid]);
+                $permCode = $stmtC->fetchColumn() ?: $code;
+            }
+            $membersFile = __DIR__ . '/data/members.json';
+            if (file_exists($membersFile)) {
+                $mjData = json_decode(file_get_contents($membersFile), true) ?? [];
+                if (isset($mjData[$permCode])) {
+                    if (!isset($mjData[$permCode]['images'])) $mjData[$permCode]['images'] = [];
+                    $mjData[$permCode]['images'][$key] = $relativePath;
+                    file_put_contents($membersFile, json_encode($mjData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+                }
+            }
+
+            // Also update data.json (source of truth for registrations)
+            $dataFile = __DIR__ . '/data/data.json';
+            if (file_exists($dataFile)) {
+                $djData = json_decode(file_get_contents($dataFile), true) ?? [];
+                foreach ($djData as &$entry) {
+                    if (isset($entry['registration_code']) && $entry['registration_code'] === $permCode) {
+                        if (!isset($entry['images'])) $entry['images'] = [];
+                        $entry['images'][$key] = $relativePath;
+                        break;
+                    }
+                }
+                unset($entry);
+                file_put_contents($dataFile, json_encode($djData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
             }
 
             // Sync
@@ -239,7 +277,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $allowedKeys = [
                 'personal_photo', 'national_id_front', 'national_id_back',
                 'id_front', 'id_back',
-                'front_image', 'side_image', 'back_image', 'edited_image' , 'acceptance_image',
+                'front_image', 'side_image', 'back_image', 'edited_image', 'acceptance_image',
                 'license_front', 'license_back'
             ];
             if (!in_array($key, $allowedKeys)) throw new Exception('حقل غير صالح');
@@ -248,32 +286,108 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             if ($key === 'id_front') $dbKey = 'national_id_front';
             if ($key === 'id_back') $dbKey = 'national_id_back';
 
-            // Find the physical path from the fully merged profile (JSON + DB)
-            $profile = MemberService::getProfile($mid);
+            // Get permanent_code for JSON lookups
+            $stmtCode = $pdo->prepare("SELECT permanent_code FROM members WHERE id = ?");
+            $stmtCode->execute([$mid]);
+            $permCode = $stmtCode->fetchColumn() ?: '';
+
+            // Step 1: Find the image path from ALL sources
             $currentPath = '';
-            if ($profile) {
-                // Check all possible locations in the profile tree where this image might be stored
-                $currentPath = $profile['images'][$key] 
-                            ?? $profile['images'][$dbKey] 
-                            ?? $profile[$key] 
-                            ?? $profile[$dbKey] 
-                            ?? '';
+            
+            // Try SQLite first
+            try {
+                if ($target === 'member') {
+                    $stmt = $pdo->prepare("SELECT $dbKey FROM members WHERE id = ?");
+                    $stmt->execute([$mid]);
+                    $currentPath = $stmt->fetchColumn() ?: '';
+                } else {
+                    $stmt = $pdo->prepare("SELECT $dbKey FROM registrations WHERE member_id = ? AND is_active = 1");
+                    $stmt->execute([$mid]);
+                    $currentPath = $stmt->fetchColumn() ?: '';
+                }
+            } catch (Exception $e) {
+                error_log("[DELETE_PHOTO] SQLite SELECT failed (OK): " . $e->getMessage());
             }
 
-            // Unlink physically if it exists
-            if ($currentPath) {
+            // Fallback: members.json
+            if (empty($currentPath) && $permCode) {
+                $membersFile = __DIR__ . '/data/members.json';
+                if (file_exists($membersFile)) {
+                    $mjData = json_decode(file_get_contents($membersFile), true) ?? [];
+                    $memberRec = $mjData[$permCode] ?? [];
+                    $images = $memberRec['images'] ?? [];
+                    $currentPath = $images[$key] ?? $images[$dbKey] ?? '';
+                }
+            }
+
+            // Fallback: data.json
+            if (empty($currentPath) && $permCode) {
+                $dataFile = __DIR__ . '/data/data.json';
+                if (file_exists($dataFile)) {
+                    $djData = json_decode(file_get_contents($dataFile), true) ?? [];
+                    foreach ($djData as $entry) {
+                        if (isset($entry['registration_code']) && $entry['registration_code'] === $permCode) {
+                            $currentPath = $entry['images'][$key] ?? $entry['images'][$dbKey] ?? $entry[$key] ?? '';
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Step 2: Unlink physically
+            if (!empty($currentPath)) {
                 $relPath = ltrim(str_replace('../', '', $currentPath), '/');
                 $fullPath = __DIR__ . '/../' . $relPath;
                 if (file_exists($fullPath)) @unlink($fullPath);
             }
 
-            // Always clear the DB value to be safe
-            if ($target === 'member') {
-                $pdo->prepare("UPDATE members SET $dbKey = NULL WHERE id = ?")->execute([$mid]);
-            } else {
-                $pdo->prepare("UPDATE registrations SET $dbKey = NULL WHERE member_id = ? AND is_active = 1")->execute([$mid]);
+            // Step 3: Clear from SQLite (best effort)
+            try {
+                if ($target === 'member') {
+                    $pdo->prepare("UPDATE members SET $dbKey = NULL WHERE id = ?")->execute([$mid]);
+                } else {
+                    $pdo->prepare("UPDATE registrations SET $dbKey = NULL WHERE member_id = ? AND is_active = 1")->execute([$mid]);
+                }
+            } catch (Exception $e) {
+                error_log("[DELETE_PHOTO] SQLite UPDATE failed (OK): " . $e->getMessage());
             }
 
+            // Step 4: CRITICAL - Clear from members.json directly
+            if ($permCode) {
+                $membersFile = __DIR__ . '/data/members.json';
+                if (file_exists($membersFile)) {
+                    $mjData = json_decode(file_get_contents($membersFile), true) ?? [];
+                    if (isset($mjData[$permCode])) {
+                        if (isset($mjData[$permCode]['images'][$key])) {
+                            $mjData[$permCode]['images'][$key] = '';
+                        }
+                        if ($key !== $dbKey && isset($mjData[$permCode]['images'][$dbKey])) {
+                            $mjData[$permCode]['images'][$dbKey] = '';
+                        }
+                        file_put_contents($membersFile, json_encode($mjData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+                    }
+                }
+            }
+
+            // Step 5: Clear from data.json
+            if ($permCode) {
+                $dataFile = __DIR__ . '/data/data.json';
+                if (file_exists($dataFile)) {
+                    $djData = json_decode(file_get_contents($dataFile), true) ?? [];
+                    foreach ($djData as &$entry) {
+                        if (isset($entry['registration_code']) && $entry['registration_code'] === $permCode) {
+                            if (isset($entry['images'][$key])) $entry['images'][$key] = '';
+                            if ($key !== $dbKey && isset($entry['images'][$dbKey])) $entry['images'][$dbKey] = '';
+                            if (isset($entry[$key])) $entry[$key] = '';
+                            break;
+                        }
+                    }
+                    unset($entry);
+                    file_put_contents($dataFile, json_encode($djData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+                }
+            }
+
+            // Step 6: Sync
             MemberService::syncToJson($mid);
             auditLog('delete_image', $target, $mid, null, $key, $currentUser->id ?? null);
             $response = ['success' => true, 'message' => 'تم الحذف بنجاح'];
@@ -1449,11 +1563,21 @@ function deleteAnyPhoto(key, target) {
         target_table: target,
         image_key: key
     }, function(res) {
+        if (typeof res === 'string') {
+            try { res = JSON.parse(res); } catch(e) {
+                alert('❌ خطأ في الرد من السيرفر');
+                console.error('Response:', res);
+                return;
+            }
+        }
         if (res.success) {
             location.reload();
         } else {
             alert('❌ خطأ: ' + (res.error || 'فشل الحذف'));
         }
+    }, 'json').fail(function(xhr, status, error) {
+        alert('❌ فشل الاتصال بالسيرفر: ' + (error || status));
+        console.error('Delete failed:', xhr.responseText);
     });
 }
 

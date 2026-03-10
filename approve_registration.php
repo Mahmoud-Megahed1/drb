@@ -90,6 +90,7 @@ if ($registrationIndex === -1) {
 }
 
 // Handle actions
+$approvalContext = null; // Will hold context for background processing
 try {
     switch ($action) {
         case 'approve':
@@ -101,6 +102,15 @@ try {
                 'send_qr_only' => isset($_POST['send_qr_only']) ? (int)$_POST['send_qr_only'] : 0
             ];
             $result = handleApproval($data, $registrationIndex, $registration, $messageOptions);
+            // If approval succeeded, prepare context for background tasks
+            if ($result['success'] ?? false) {
+                $approvalContext = [
+                    'data' => $data,
+                    'index' => $registrationIndex,
+                    'registration' => $registration,
+                    'messageOptions' => $messageOptions
+                ];
+            }
             break;
             
         case 'reject':
@@ -117,6 +127,7 @@ try {
     $result = ['success' => false, 'message' => 'خطأ فادح: ' . $e->getMessage(), 'file' => $e->getFile(), 'line' => $e->getLine()];
 }
 
+// *** SEND RESPONSE AND EXIT IMMEDIATELY ***
 echo json_encode($result);
 exit;
 
@@ -143,6 +154,9 @@ function handleApproval(&$data, $index, $registration, $messageOptions = []) {
     $data[$index]['status'] = 'approved';
     $data[$index]['approved_date'] = date('Y-m-d H:i:s');
     $data[$index]['approved_by'] = $username;
+    
+    $debugLog = __DIR__ . '/admin/data/approval_trace.log';
+    file_put_contents($debugLog, date('[H:i:s] ') . "Started approval for {$registration['wasel']}\n", FILE_APPEND);
     
     // ============ ASSIGN TIME SLOT (Iraq Timezone) ============
     date_default_timezone_set('Asia/Baghdad');
@@ -216,321 +230,94 @@ function handleApproval(&$data, $index, $registration, $messageOptions = []) {
     }
 
     // --- CRITICAL FIX: SAVE HERE IMMEDIATELY ---
-    // Save "Approved" status + Token BEFORE attempting image generation
-    // This ensures the member is active even if image generation crashes/fails
+    file_put_contents($debugLog, date('[H:i:s] ') . "Saving data Phase 1...\n", FILE_APPEND);
     if (!saveData($data)) {
-        return ['success' => false, 'message' => 'فشل في حفظ بيانات القبول (المرحلة 1)'];
+        return ['success' => false, 'message' => 'فشل في حفظ بيانات القبول'];
     }
-    // -------------------------------------------
+    file_put_contents($debugLog, date('[H:i:s] ') . "Saved OK. Returning immediately.\n", FILE_APPEND);
 
-    
-    // ============ PREVENT CRASH: WRAP IMAGE GENERATION ============
-    try {
-        // Check if there's already an edited image from the visual editor
-        $generatedImagePath = null;
-        $imageResult = ['success' => false, 'error' => 'No image'];
-        
-        // Debug logging
-        $logFile = __DIR__ . '/admin/data/approval_debug.log';
-        $logMsg = date('[Y-m-d H:i:s] ') . "Processing Wasel: {$registration['wasel']}\n";
-        
-        // Absolute paths for reliability on Hostinger
-        $baseDir = __DIR__;
-        $outputDir = $baseDir . '/uploads/accepted/';
-        
-        // Ensure absolute output directory exists
-        if (!file_exists($outputDir)) {
-            mkdir($outputDir, 0755, true);
-        }
-        
-    // Try to get the source image path
-    $sourcePath = null;
-    $sourceType = 'none';
-        
-    if (!empty($registration['edited_image'])) {
-        // Check various possible locations for the edited image
-        $candidates = [
-            $baseDir . '/' . $registration['edited_image'],
-            $baseDir . '/admin/' . $registration['edited_image'],
-            $registration['edited_image'] // Absolute or relative as is
-        ];
-            
-        foreach ($candidates as $cand) {
-            if (file_exists($cand) && !is_dir($cand)) {
-                $sourcePath = $cand;
-                $sourceType = 'visual_editor';
-                $logMsg .= "Found edited image at: $cand\n";
-                break;
-            }
-        }
-    }
-        
-    // Attempt Copy
-    if ($sourcePath) {
-        $filename = $registration['wasel'] . '_accepted_' . time() . '.png';
-        $outputPath = $outputDir . $filename; // Absolute path for copy destination
-            
-        if (copy($sourcePath, $outputPath)) {
-            // Store RELATIVE path in DB for web display
-            $generatedImagePath = 'uploads/accepted/' . $filename;
-            $imageResult = ['success' => true, 'image_path' => $generatedImagePath, 'source' => 'visual_editor'];
-            $logMsg .= "Copy successful to: $outputPath\n";
-        } else {
-            $logMsg .= "Copy FAILED from $sourcePath to $outputPath\n";
-            // Fallback: Use the edited image path directly so buttons still show
-            $generatedImagePath = $registration['edited_image'];
-        }
-    } 
-    // If no visual editor image, we DO NOT generate a simple image here.
-    // Instead, acceptance.php will dynamically render the frame, 
-    // and OG tags will point to generate_acceptance.php.
-    if (!$generatedImagePath) {
-        $logMsg .= "Using dynamic acceptance.php (no local file generated).\n";
-        $generatedImagePath = null; 
-    }
-        
-} catch (Throwable $t) {
-    $logMsg = "CRITICAL ERROR in Image Generation: " . $t->getMessage() . "\n";
-    $processLog[] = "ImgCrash: " . $t->getMessage();
-    $generatedImagePath = null; // Ensure we don't save invalid path
-}
-// =============================================================
-    
-$data[$index]['acceptance_image'] = $generatedImagePath;
-    
-    // Save data IMMEDIATELY
-    if (!saveData($data)) {
-        file_put_contents($logFile, $logMsg . "Data Save Failed!\n", FILE_APPEND);
-        return ['success' => false, 'message' => 'فشل في حفظ البيانات'];
-    }
-    file_put_contents($logFile, $logMsg . "Data Saved Successfully.\n", FILE_APPEND);
-    
-    // --- WHATSAPP SEQUENCE ---
-    $processLog = []; // Reset log for WhatsApp part
-    $messagesSentCount = 0;
-    
-    // Only proceed with WhatsApp if at least one message type is selected
-    if ($sendRegistration || $sendAcceptance || $sendBadge) {
-        $wasender = new WaSender();
-        
-        // Build URLs (Exact match to resend_approval.php logic)
-        $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
-        $host = $_SERVER['HTTP_HOST'];
-        
-        // Use secure badge_token for links
-        $badgeToken = $data[$index]['badge_token'] ?? $data[$index]['badge_id'] ?? $registration['wasel'];
-        $badgeId = $data[$index]['badge_id'] ?? $registration['wasel'];
-        
-        // Direct path from root, assuming site is in public_html/root
-        $acceptanceLink = $protocol . '://' . $host . '/acceptance.php?token=' . urlencode($badgeToken);
-        
-        // Load message templates from settings
-        $messagesFile = __DIR__ . '/admin/data/whatsapp_messages.json';
-        $messageTemplates = [
-            'registration_message' => "📋 *تم استلام طلب التسجيل*\n━━━━━━━━━━━━━━━\n\n👤 الاسم: {name}\n🚗 السيارة: {car_type}\n🔖 اللوحة: {plate}\n\nسيتم مراجعة طلبك وإبلاغك بالنتيجة قريباً.\n\nشكراً لتسجيلك! 🏆",
-            'acceptance_message' => "🎉 *مبروك! تم قبول طلبك!*\n━━━━━━━━━━━━━━━\n\n👤 *الاسم:* {name}\n🔢 *رقم التسجيل:* #{wasel}\n🚗 *السيارة:* {car_type}\n🔖 *اللوحة:* {plate}\n\n✅ احتفظ بهذه الصورة وأظهرها عند دخول الحلبة\n\n📱 *يمكنك مشاركة هذه الصورة على مواقع التواصل الاجتماعي!*\n\n🏆 نراك في الحلبة!\n━━━━━━━━━━━━━━━",
-            'badge_caption' => "🎫 باج دخول الحلبة\n\n✅ قم بإظهار هذا الباج عند الدخول للحلبة\n\n🔑 كود التسجيل: {registration_code}"
-        ];
-        
-        if (file_exists($messagesFile)) {
-            $savedMessages = json_decode(file_get_contents($messagesFile), true);
-            if ($savedMessages) {
-                $messageTemplates = array_merge($messageTemplates, $savedMessages);
-            }
-        }
-        
-        // === MESSAGE 0: Registration Confirmation (Optional) ===
-        if ($sendRegistration) {
-            try {
-                $regCaption = $messageTemplates['registration_message'] ?? $messageTemplates['acceptance_message'];
-                $regCaption = str_replace('{name}', $registration['full_name'] ?? 'مشترك', $regCaption);
-                $regCaption = str_replace('{wasel}', $registration['wasel'] ?? '', $regCaption);
-                $regCaption = str_replace('{car_type}', $registration['car_type'] ?? '', $regCaption);
-                $regCaption = str_replace('{plate}', $registration['plate_full'] ?? '', $regCaption);
-                $regCaption = str_replace('{registration_code}', $registration['registration_code'] ?? '', $regCaption);
-                
-                $regResult = $wasender->sendMessage($registration['phone'], $regCaption, $registration['country_code'] ?? '+964');
-                $processLog[] = "RegMsg: " . ($regResult['success'] ? 'OK' : 'Fail');
-                if ($regResult['success']) $messagesSentCount++;
-                
-                sleep(3);
-            } catch (Exception $e) {
-                $processLog[] = "RegMsgErr: " . $e->getMessage();
-            }
-        }
-        
-        // === MESSAGE 1: Acceptance with Frame Link ===
-        if ($sendAcceptance) {
-            try {
-                // DIRECT MATCH WITH test_acceptance_logic.php
-                // Fixed Protocol & Host logic
-                $protocol = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? "https" : "http";
-                $host = $_SERVER['HTTP_HOST'];
-                $path = dirname($_SERVER['PHP_SELF']); 
-                // Fix path if it points to admin
-                $path = str_replace('/admin', '', $path);
-                $path = rtrim($path, '/');
-                
-                $baseUrl = "$protocol://$host$path";
-                
-                // Acceptance Page Link
-                $acceptanceLink = $baseUrl . "/acceptance.php?token=" . $badgeToken;
-                
-                $acceptCaption = $messageTemplates['acceptance_message'];
-                $acceptCaption = str_replace('{name}', $registration['full_name'] ?? 'مشترك', $acceptCaption);
-                $acceptCaption = str_replace('{wasel}', $registration['wasel'] ?? '', $acceptCaption);
-                $acceptCaption = str_replace('{car_type}', $registration['car_type'] ?? '', $acceptCaption);
-                $acceptCaption = str_replace('{plate}', $registration['plate_full'] ?? '', $acceptCaption);
-                $acceptCaption = str_replace('{registration_code}', $registration['registration_code'] ?? '', $acceptCaption);
-                
-                // Add acceptance link
-                $acceptCaption .= "\n\n🌐 *رابط بطاقة القبول:* \n" . $acceptanceLink;
-                
-                // Send MESSAGE ONLY (No Image Attachment) to avoid encoding issues
-                $acceptResult = $wasender->sendMessage($registration['phone'], $acceptCaption, $registration['country_code'] ?? '+964');
-                
-                // ... (Logging) ...
-                $processLog[] = "AcceptMsg: " . ($acceptResult['success'] ? 'OK' : 'Fail');
-                if ($acceptResult['success']) $messagesSentCount++;
-
-                sleep(5); // Increased delay to avoid rate limiting when sending multiple messages 
-            } catch (Exception $e) {
-                $processLog[] = "AcceptMsgErr: " . $e->getMessage();
-            }
-        }
-        
-        // === MESSAGE 2: Badge with QR Code ===
-        if ($sendBadge) {
-            try {
-                // Determine Paths again to be safe
-                $protocol = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? "https" : "http";
-                $host = $_SERVER['HTTP_HOST'];
-                $path = dirname($_SERVER['PHP_SELF']); 
-                $path = str_replace('/admin', '', $path); // Ensure we are in root
-                $path = rtrim($path, '/');
-                $baseUrl = "$protocol://$host$path";
-
-                // Create verify URL for QR code (Direct path)
-                $verifyUrl = $baseUrl . '/verify_entry.php?badge_id=' . urlencode($badgeId) . '&action=checkin';
-                
-                // Badge link with secure token (Direct path)
-                $badgeLink = $baseUrl . '/badge.php?token=' . urlencode($badgeToken);
-                
-                // Generate QR Code image URL
-                $qrCodeUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' . urlencode($verifyUrl);
-                
-                // Build badge caption from template
-                $badgeCaption = $messageTemplates['badge_caption'] ?? "🎫 باج دخول الحلبة\n\n✅ قم بإظهار هذا الباج عند الدخول للحلبة";
-                $badgeCaption = str_replace('{name}', $registration['full_name'] ?? 'مشترك', $badgeCaption);
-                $badgeCaption = str_replace('{wasel}', $registration['wasel'] ?? '', $badgeCaption);
-                $badgeCaption = str_replace('{registration_code}', $registration['registration_code'] ?? '', $badgeCaption);
-                
-                // Add badge link
-                $badgeCaption .= "\n\n📥 *افتح الباج الكامل:*\n" . $badgeLink;
-                
-                // Matches resend_approval.php: usage of sendImage
-                $badgeResult = $wasender->sendImage($registration['phone'], $qrCodeUrl, $badgeCaption, $registration['country_code'] ?? '+964');
-                
-                file_put_contents(__DIR__ . '/admin/data/approval_debug.log', 
-                    date('[Y-m-d H:i:s] ') . "QR BADGE RESULT: " . json_encode($badgeResult) . " | Badge Link: $badgeLink\n", 
-                    FILE_APPEND);
-                
-                $processLog[] = "QRBadge: " . ($badgeResult['success'] ? 'OK' : 'Fail');
-                if ($badgeResult['success']) $messagesSentCount++;
-            } catch (Exception $e) {
-                $processLog[] = "QRBadgeErr: " . $e->getMessage();
-            }
-        }
-        
-        // === MESSAGE 4: QR Only (Optional - Just QR code without full badge) ===
-        $sendQrOnly = $messageOptions['send_qr_only'] ?? 0;
-        if ($sendQrOnly) {
-            try {
-                $processLog[] = "QROnly: Starting";
-                
-                // Generate QR code URL
-                $badgeToken = $data[$index]['badge_token'] ?? $data[$index]['badge_id'] ?? $registration['wasel'];
-                $qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=" . urlencode($protocol . "://" . $host . "/verify_entry.php?token=" . $badgeToken . "&action=checkin");
-                
-                // Send QR only message
-                $qrOnlyResult = $wasender->sendQrOnly([
-                    'wasel' => $registration['wasel'],
-                    'full_name' => $registration['full_name'] ?? '',
-                    'name' => $registration['full_name'] ?? '',
-                    'car_type' => $registration['car_type'] ?? '',
-                    'phone' => $registration['phone'] ?? '',
-                    'country_code' => $registration['country_code'] ?? '+964'
-                ], $qrUrl);
-                
-                file_put_contents(__DIR__ . '/admin/data/approval_debug.log', 
-                    date('[Y-m-d H:i:s] ') . "QR ONLY RESULT: " . json_encode($qrOnlyResult) . "\n", 
-                    FILE_APPEND);
-                
-                $processLog[] = "QROnly: " . ($qrOnlyResult['success'] ? 'OK' : 'Fail');
-                if ($qrOnlyResult['success']) $messagesSentCount++;
-            } catch (Exception $e) {
-                $processLog[] = "QROnlyErr: " . $e->getMessage();
-            }
-        }
-    } else {
-        $processLog[] = "NoMessagesSelected";
-    }
-
-    // Log trace
-    file_put_contents('admin/data/whatsapp_process.log', date('[Y-m-d H:i:s] ') . implode(" | ", $processLog) . "\n", FILE_APPEND);
-    
-    // Log approval to AdminLogger
-    try {
-        $adminLogger = new AdminLogger();
-        $adminLogger->log(
-            AdminLogger::ACTION_PARTICIPANT_APPROVE,
-            $username,
-            'قبول تسجيل: ' . ($registration['full_name'] ?? 'غير معروف') . ' (#' . ($registration['wasel'] ?? '') . ')',
-            [
-                'wasel' => $registration['wasel'] ?? '',
-                'name' => $registration['full_name'] ?? '',
-                'messages_sent' => $messagesSentCount
-            ]
-        );
-    } catch (Exception $e) {
-        // Don't fail if logging fails
-    }
-    // ============ SYNC TO SQLite & JSON (Crucial for Display) ============
-    // 1. Ensure a mirror record exists in SQLite (migrates from JSON if new)
-    try {
-        MemberService::ensureSQLiteRecord($data[$index]);
-    } catch (Exception $e) {
-        file_put_contents('admin/data/sqlite_sync_error.log', date('[Y-m-d H:i:s] ') . "SQLite sync failed for {$registration['wasel']}: " . $e->getMessage() . "\n", FILE_APPEND);
-    }
-
-    // 2. We must ensure data.json is updated so generate_acceptance.php 
-    // and scanners see the correct full_name, governorate, and photo.
-    try {
-        MemberService::syncToJsonByWasel($registration['wasel']);
-    } catch (Exception $e) {
-        file_put_contents('admin/data/sync_error.log', date('[Y-m-d H:i:s] ') . "Sync failed for {$registration['wasel']}: " . $e->getMessage() . "\n", FILE_APPEND);
-    }
-    
-    // Log to registration actions archive
-    try {
-        RegistrationActionLogger::log('approved', $data[$index], 'تم القبول', $username);
-    } catch (Exception $e) {}
-
+    // Return success IMMEDIATELY - heavy tasks run in background after response
     return [
         'success' => true,
-        'message' => 'تم قبول التسجيل بنجاح',
-        'messages_sent' => $messagesSentCount,
-        'whatsapp' => ['success' => true],
-        'image_path' => $generatedImagePath,
-        'acceptance_link' => $acceptanceLink ?? null,
-        'process_log' => implode(", ", $processLog),
-        'debug_inputs' => [
-            'send_badge_flag' => $sendBadge,
-            'send_acceptance_flag' => $sendAcceptance, 
-            'send_registration_flag' => $sendRegistration
-        ]
+        'message' => 'تم قبول التسجيل بنجاح'
     ];
 }
+
+/**
+ * Process heavy approval tasks in background (AFTER response is sent to browser)
+ * This runs after fastcgi_finish_request() so the browser already got the response
+ */
+function processApprovalBackground(&$data, $index, $registration, $messageOptions = []) {
+    $debugLog = __DIR__ . '/admin/data/approval_trace.log';
+    file_put_contents($debugLog, date('[H:i:s] ') . "BG: Start {$registration['wasel']}\n", FILE_APPEND);
+    
+    $sendAcceptance = $messageOptions['send_acceptance'] ?? 1;
+    $sendBadge = $messageOptions['send_badge'] ?? 1;
+    
+    $username = 'admin';
+    if (isset($_SESSION['user'])) {
+        if (is_object($_SESSION['user']) && isset($_SESSION['user']->username)) {
+            $username = $_SESSION['user']->username;
+        } elseif (is_array($_SESSION['user']) && isset($_SESSION['user']['username'])) {
+            $username = $_SESSION['user']['username'];
+        }
+    }
+    
+    $processLog = [];
+    
+    // ============ WHATSAPP (just queues messages - fast) ============
+    try {
+        $waSender = new WaSender();
+        $host = $_SERVER['HTTP_HOST'] ?? 'yellowgreen-quail-410393.hostingersite.com';
+        $baseUrl = "https://$host";
+        
+        $badgeToken = $data[$index]['badge_token'] ?? $registration['wasel'];
+        $acceptanceLink = $baseUrl . '/acceptance.php?token=' . urlencode($badgeToken);
+        
+        // Load templates
+        $messagesFile = __DIR__ . '/admin/data/whatsapp_messages.json';
+        $messageTemplates = [];
+        if (file_exists($messagesFile)) {
+            $messageTemplates = json_decode(file_get_contents($messagesFile), true) ?? [];
+        }
+        
+        if ($sendAcceptance) {
+            $acceptCaption = $messageTemplates['acceptance_message'] ?? "🎉 *مبروك! تم قبول طلبك!*\n\n👤 {name}\n🔢 #{wasel}\n🚗 {car_type}";
+            $acceptCaption = str_replace(['{name}', '{wasel}', '{car_type}', '{plate}', '{registration_code}'],
+                [$registration['full_name'] ?? '', $registration['wasel'] ?? '', $registration['car_type'] ?? '', $registration['plate_full'] ?? '', $registration['registration_code'] ?? ''],
+                $acceptCaption);
+            $acceptCaption .= "\n\n🌐 *رابط بطاقة القبول:* \n" . $acceptanceLink;
+            $waSender->sendMessage($registration['phone'], $acceptCaption, $registration['country_code'] ?? '+964');
+            $processLog[] = 'Accept: Queued';
+        }
+        
+        if ($sendBadge) {
+            $badgeId = $data[$index]['badge_id'] ?? $registration['wasel'];
+            $verifyUrl = $baseUrl . '/verify_entry.php?badge_id=' . urlencode($badgeId) . '&action=checkin';
+            $badgeLink = $baseUrl . '/badge.php?token=' . urlencode($badgeToken);
+            $qrCodeUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' . urlencode($verifyUrl);
+            
+            $badgeCaption = $messageTemplates['badge_caption'] ?? "🎫 باج دخول الحلبة\n\n✅ قم بإظهار هذا الباج عند الدخول للحلبة";
+            $badgeCaption = str_replace(['{name}', '{wasel}', '{registration_code}'],
+                [$registration['full_name'] ?? '', $registration['wasel'] ?? '', $registration['registration_code'] ?? ''],
+                $badgeCaption);
+            $badgeCaption .= "\n\n📥 *افتح الباج الكامل:*\n" . $badgeLink;
+            
+            $waSender->sendImage($registration['phone'], $qrCodeUrl, $badgeCaption, $registration['country_code'] ?? '+964');
+            $processLog[] = 'Badge: Queued';
+        }
+    } catch (\Throwable $e) {
+        $processLog[] = 'WA: ' . $e->getMessage();
+    }
+    
+    // ============ SYNC (fast operations) ============
+    try { MemberService::ensureSQLiteRecord($data[$index]); } catch (\Throwable $e) {}
+    try { MemberService::syncToJsonByWasel($registration['wasel']); } catch (\Throwable $e) {}
+    try { RegistrationActionLogger::log('approved', $data[$index], 'تم القبول', $username); } catch (\Throwable $e) {}
+    
+    file_put_contents($debugLog, date('[H:i:s] ') . "BG: Done {$registration['wasel']} | " . implode(' | ', $processLog) . "\n", FILE_APPEND);
+}
+
 
 /**
  * Handle rejection
@@ -1105,12 +892,71 @@ function generateAcceptanceImage($registration) {
 }
 
 /**
- * Save data to file
+ * Load data from JSON file with shared lock (prevents reading corrupted data)
+ */
+function loadDataSafe($dataFile) {
+    if (!file_exists($dataFile)) return null;
+    $fp = fopen($dataFile, 'r');
+    if (!$fp) return null;
+    // Non-blocking shared lock with retry
+    $maxRetries = 10;
+    $locked = false;
+    for ($i = 0; $i < $maxRetries; $i++) {
+        if (flock($fp, LOCK_SH | LOCK_NB)) {
+            $locked = true;
+            break;
+        }
+        usleep(100000); // 100ms
+    }
+    if (!$locked) {
+        // If we can't get shared lock after 1s, read anyway
+        flock($fp, LOCK_SH);
+    }
+    $content = stream_get_contents($fp);
+    flock($fp, LOCK_UN);
+    fclose($fp);
+    return json_decode($content, true);
+}
+
+/**
+ * Save data to file with exclusive lock (prevents concurrent writes)
  */
 function saveData($data) {
     $dataFile = 'admin/data/data.json';
     $json = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-    return file_put_contents($dataFile, $json) !== false;
+    if ($json === false) return false;
+    
+    // Try to get lock with timeout (non-blocking)
+    $fp = @fopen($dataFile, 'c');
+    if (!$fp) {
+        // Fallback: write without lock
+        return file_put_contents($dataFile, $json) !== false;
+    }
+    
+    $maxWait = 3; // seconds
+    $start = time();
+    $locked = false;
+    
+    while ((time() - $start) < $maxWait) {
+        $locked = flock($fp, LOCK_EX | LOCK_NB);
+        if ($locked) break;
+        usleep(100000); // 100ms
+    }
+    
+    if ($locked) {
+        ftruncate($fp, 0);
+        rewind($fp);
+        $written = fwrite($fp, $json);
+        fflush($fp);
+        flock($fp, LOCK_UN);
+        fclose($fp);
+        return $written !== false;
+    } else {
+        // Lock timeout - write anyway (better than hanging forever)
+        fclose($fp);
+        file_put_contents($dataFile . '.bak', $json); // backup first
+        return file_put_contents($dataFile, $json) !== false;
+    }
 }
 
 /**
@@ -1375,8 +1221,23 @@ function generateAndSendBadge($registration, $wasender, $protocol, $host, $baseP
     // Generate QR with the verify URL (same as badge.php)
     $qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=" . urlencode($verifyUrl);
     
-    // Fetch QR image
-    $qrContent = @file_get_contents($qrUrl);
+    // Fetch QR image with strict 2-second timeout to prevent server hangs
+    $qrContent = false;
+    if (function_exists('curl_init')) {
+        $ch = curl_init($qrUrl);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 2); // 2 seconds strict timeout
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 1);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        $qrContent = curl_exec($ch);
+        if (curl_getinfo($ch, CURLINFO_HTTP_CODE) !== 200) {
+            $qrContent = false;
+        }
+        curl_close($ch);
+    } else {
+        $ctx = stream_context_create(['http' => ['timeout' => 2]]);
+        $qrContent = @file_get_contents($qrUrl, false, $ctx);
+    }
     if ($qrContent) {
         $qrImg = @imagecreatefromstring($qrContent);
         if ($qrImg) {

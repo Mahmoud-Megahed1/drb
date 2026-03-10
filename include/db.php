@@ -35,6 +35,15 @@ class Database {
         if ($isNewDb) {
             $this->initSchema();
         }
+        
+        // Auto-migrations: add missing columns (safe to run multiple times)
+        $migrations = [
+            "ALTER TABLE registrations ADD COLUMN license_front TEXT",
+            "ALTER TABLE registrations ADD COLUMN license_back TEXT",
+        ];
+        foreach ($migrations as $sql) {
+            try { $this->pdo->exec($sql); } catch (\Exception $e) { /* column already exists */ }
+        }
     }
     
     private function initSchema() {

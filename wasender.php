@@ -724,9 +724,21 @@ class WaSender {
      * Save a message to the queue to be processed by background worker
      */
     public function queueMessage($phone, $type, $apiData, $extra = [], $error = '', $dbId = null) {
-        // Prevent concurrent write issues with file locks
+        // Prevent concurrent write issues with file locks (non-blocking to prevent deadlocks)
         $fp = fopen($this->queueFile, "c+");
-        if (flock($fp, LOCK_EX)) {
+        if (!$fp) return;
+        
+        // Try non-blocking lock with timeout
+        $locked = false;
+        $maxWait = 2; // seconds
+        $start = time();
+        while ((time() - $start) < $maxWait) {
+            $locked = flock($fp, LOCK_EX | LOCK_NB);
+            if ($locked) break;
+            usleep(100000); // 100ms
+        }
+        
+        if ($locked) {
             $size = filesize($this->queueFile);
             $queue = [];
             if ($size > 0) {
@@ -773,6 +785,16 @@ class WaSender {
             fwrite($fp, json_encode($queue, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
             fflush($fp);
             flock($fp, LOCK_UN);
+        } else {
+            // Lock timeout - append to a fallback file
+            file_put_contents($this->queueFile . '.pending', json_encode([
+                'id' => uniqid('msg_'),
+                'phone' => $phone,
+                'type' => $type,
+                'data' => $apiData,
+                'created_at' => date('Y-m-d H:i:s'),
+                'status' => 'pending'
+            ]) . "\n", FILE_APPEND);
         }
         fclose($fp);
         
@@ -931,7 +953,9 @@ class WaSender {
             
             // Lock queue to prevent collisions while finding next msg
             $fp = fopen($this->queueFile, "c+");
-            if (flock($fp, LOCK_EX)) {
+            $qLocked = false;
+            for ($li = 0; $li < 20; $li++) { $qLocked = flock($fp, LOCK_EX | LOCK_NB); if ($qLocked) break; usleep(100000); }
+            if ($qLocked) {
                 $size = filesize($this->queueFile);
                 if ($size > 0) {
                     $content = fread($fp, $size);
@@ -995,7 +1019,9 @@ class WaSender {
             
             // Lock Queue to update final status
             $fp = fopen($this->queueFile, "c+");
-            if (flock($fp, LOCK_EX)) {
+            $qLocked2 = false;
+            for ($li = 0; $li < 20; $li++) { $qLocked2 = flock($fp, LOCK_EX | LOCK_NB); if ($qLocked2) break; usleep(100000); }
+            if ($qLocked2) {
                 $size = filesize($this->queueFile);
                 if ($size > 0) {
                     $content = fread($fp, $size);

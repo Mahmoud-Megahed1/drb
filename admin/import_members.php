@@ -677,7 +677,7 @@ function commitImport($parsedData, $source, $batchId, $messagePrefs = [], $desti
         }
 
         // Save Members File
-        file_put_contents($membersFile, json_encode($membersData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
+        file_put_contents($membersFile, json_encode($membersData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
         
         // --- SYNC TO SQLITE (Unified) ---
         try {
@@ -855,7 +855,7 @@ function commitImport($parsedData, $source, $batchId, $messagePrefs = [], $desti
             $membersData[$regCode] = $memberRecord;
         }
         
-        file_put_contents($membersFile, json_encode($membersData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
+        file_put_contents($membersFile, json_encode($membersData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
         
         // 2. Sync to SQLite (Members + Registrations)
         $pdo = db();

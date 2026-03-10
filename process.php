@@ -129,6 +129,15 @@ function removeItemById_archive($file, $target_id) {
     file_put_contents($file_path, $updated_json_data);
 }
 
+function normalizePlateStr($str) {
+    if (empty($str)) return '';
+    $str = trim((string)$str);
+    $arabic = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+    $english = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+    $str = str_replace($arabic, $english, $str);
+    return str_replace([' ', '-'], '', $str);
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["action"]) && $_POST["action"] === 'remove') {
     $file = $_POST["file"];
     $wasel = $_POST["wasel"];
@@ -164,6 +173,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["action"]) && $_POST["
     
     echo 'تم أرشفة العنصر بنجاح.';
 } elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Check for upload exceeding post_max_size (which empties $_POST)
+    if (empty($_POST) && isset($_SERVER['CONTENT_LENGTH']) && (int)$_SERVER['CONTENT_LENGTH'] > 0) {
+        $maxPostSize = ini_get('post_max_size');
+        http_response_code(400);
+        echo "خطأ: مجموع حجم الملفات المرفوعة كبير جداً وتجاوز الحد الأقصى للسيرفر ($maxPostSize). يرجى تقليل مساحة الصور.";
+        exit;
+    }
+
     // Car Registration Processing
     
     // Validate required fields
@@ -388,13 +405,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["action"]) && $_POST["
         
         // Check plate uniqueness (robust check by individual fields)
         $plateMatch = false;
-        if (isset($item['plate_full']) && $item['plate_full'] === $newPlate) {
+        
+        $np_num = normalizePlateStr($_POST['plate_number'] ?? '');
+        $np_let = normalizePlateStr($_POST['plate_letter'] ?? '');
+        $np_gov = normalizePlateStr($_POST['plate_governorate'] ?? '');
+        
+        $ep_num = normalizePlateStr($item['plate_number'] ?? '');
+        $ep_let = normalizePlateStr($item['plate_letter'] ?? '');
+        $ep_gov = normalizePlateStr($item['plate_governorate'] ?? '');
+
+        if (
+            $ep_num !== '' && $ep_let !== '' && $ep_gov !== '' &&
+            $ep_num === $np_num && $ep_let === $np_let && $ep_gov === $np_gov
+        ) {
             $plateMatch = true;
         } elseif (
-            isset($item['plate_number']) && isset($item['plate_letter']) && isset($item['plate_governorate']) &&
-            $item['plate_number'] === trim($_POST['plate_number']) &&
-            $item['plate_letter'] === trim($_POST['plate_letter']) &&
-            $item['plate_governorate'] === trim($_POST['plate_governorate'])
+            isset($item['plate_full']) && 
+            normalizePlateStr($item['plate_full']) === normalizePlateStr($newPlate)
         ) {
             $plateMatch = true;
         }
@@ -406,9 +433,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["action"]) && $_POST["
                  echo "<br><br>كود التسجيل الخاص بك هو: <strong>" . $item['registration_code'] . "</strong>";
                  echo "<br>جاري جلب بياناتك السابقة تلقائياً للتعديل عليها...";
                  echo "<script>
-                        document.getElementById('registration_code').value = '" . $item['registration_code'] . "'; 
-                        window.scrollTo({top: document.getElementById('registration_code').offsetTop - 100, behavior: 'smooth'}); 
-                        setTimeout(lookupCode, 800);
+                        setTimeout(function() {
+                            var rc = document.getElementById('registration_code');
+                            if(rc) { 
+                                rc.value = '" . $item['registration_code'] . "'; 
+                                rc.scrollIntoView({ behavior: 'smooth', block: 'center' }); 
+                                setTimeout(lookupCode, 800);
+                            }
+                        }, 100);
                       </script>";
             }
             exit;
@@ -446,11 +478,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["action"]) && $_POST["
     file_put_contents('admin/data/upload_debug.log', $debugLog, FILE_APPEND);
     
     foreach ($allPossibleFiles as $fileField) {
-        // Check if new file was uploaded
-        if (isset($_FILES[$fileField]) && $_FILES[$fileField]['error'] === UPLOAD_ERR_OK) {
+        // Check if file was uploaded
+        if (isset($_FILES[$fileField]) && $_FILES[$fileField]['name']) {
             $file = $_FILES[$fileField];
             
-            // Check file size
+            // Handle PHP upload errors (e.g., file too large for server config)
+            if ($file['error'] !== UPLOAD_ERR_OK) {
+                $errorMsg = 'حدث خطأ غير معروف أثناء رفع الملف.';
+                if ($file['error'] === UPLOAD_ERR_INI_SIZE || $file['error'] === UPLOAD_ERR_FORM_SIZE) {
+                    $errorMsg = 'حجم الملف كبير جداً وتجاوز الحد المسموح به في السيرفر.';
+                } elseif ($file['error'] === UPLOAD_ERR_PARTIAL) {
+                    $errorMsg = 'تم رفع الملف بشكل جزئي، يرجى المحاولة مرة أخرى.';
+                }
+                http_response_code(400);
+                echo "فشل في رفع الصورة ($fileField): $errorMsg";
+                exit;
+            }
+            
+            // Check file size limit
             if ($file['size'] > $maxFileSize) {
                 http_response_code(400);
                 echo 'حجم الملف كبير جداً: ' . $fileField . ' (الحد الأقصى 100MB)';
@@ -471,18 +516,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["action"]) && $_POST["
             $filename = $wasel . '_' . $fileField . '_' . time() . '.' . $ext;
             $filepath = $uploadDir . $filename;
             
-            // Move uploaded file with compression
-            require_once 'include/image_utils.php';
-            
-            // Try to compress (Quality 60, Max Width 1200px for good balance)
-            if (compressImage($file['tmp_name'], $filepath, 60, 1200)) {
-                 $imagePaths[$fileField] = $filepath;
-            } elseif (move_uploaded_file($file['tmp_name'], $filepath)) {
-                // Fallback to normal move if compression fails (e.g. for unsupported formats)
+            // Move uploaded file WITHOUT compression (Fast Track) to prevent 503 Server Timeouts
+            // The compression process in GD requires too much CPU/RAM on Hostinger when multiple large files are uploaded.
+            if (move_uploaded_file($file['tmp_name'], $filepath)) {
                 $imagePaths[$fileField] = $filepath;
             } else {
                 http_response_code(500);
-                echo 'فشل في رفع الملف: ' . $fileField;
+                echo 'فشل استثنائي في حفظ الملف على السيرفر: ' . $fileField;
                 exit;
             }
         } elseif (isset($previousImages[$fileField]) && !empty($previousImages[$fileField])) {
@@ -612,12 +652,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["action"]) && $_POST["
     $newJsonString = json_encode($existingData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
     if (file_put_contents($data_file_location, $newJsonString)) {
         
-        auditLog('create', 'registrations', $wasel, null, 'Public Registration', null);
+        // ===================================================================
+        // CRITICAL FIX: Send response to browser IMMEDIATELY after data.json save.
+        // All heavy operations (SQLite, members.json sync, WhatsApp) run AFTER
+        // the browser receives the response. This prevents 503 timeout on Hostinger.
+        // ===================================================================
+        $responseText = '✅ تم تسجيل طلبك بنجاح!' . "\n";
+        $responseText .= 'رقم التسجيل: ' . $wasel . "\n";
+        $responseText .= 'كود التسجيل: ' . $registrationCode . "\n";
+        $responseText .= 'سيتم مراجعة طلبك وإرسال رسالة لك عند القبول';
+        
+        // Send response early - close connection to browser
+        http_response_code(200);
+        header('Content-Type: text/plain; charset=utf-8');
+        header('Content-Length: ' . (function_exists('mb_strlen') ? mb_strlen($responseText, '8bit') : strlen($responseText)));
+        header('Connection: close');
+        echo $responseText;
+        
+        // Flush all output buffers to send data to browser NOW
+        if (ob_get_level() > 0) {
+            ob_end_flush();
+        }
+        flush();
+        
+        // If running under PHP-FPM (Hostinger), this instantly closes the connection
+        if (function_exists('fastcgi_finish_request')) {
+            fastcgi_finish_request();
+        }
+        
+        // === BACKGROUND OPERATIONS (browser already received response) ===
+        // Increase time limit for background work
+        @set_time_limit(120);
+        
+        // Audit Log
+        try {
+            auditLog('create', 'registrations', $wasel, null, 'Public Registration', null);
+        } catch (\Throwable $err) {
+            error_log('Audit log failed: ' . $err->getMessage());
+        }
         
         // Log to registration actions archive
-        $actionType = $isReturningUser ? 're_registered' : 'registered';
-        $actionDetails = $isReturningUser ? 'إعادة تسجيل (تعديل بيانات)' : 'تسجيل جديد';
-        RegistrationActionLogger::log($actionType, $newData, $actionDetails, 'public');
+        try {
+            $actionType = $isReturningUser ? 're_registered' : 'registered';
+            $actionDetails = $isReturningUser ? 'إعادة تسجيل (تعديل بيانات)' : 'تسجيل جديد';
+            RegistrationActionLogger::log($actionType, $newData, $actionDetails, 'public');
+        } catch (\Throwable $err) {
+            error_log('Action logger failed: ' . $err->getMessage());
+        }
         
         // === AUTO-ADD TO MEMBERS PAGE (SQLite + members.json) ===
         try {
@@ -714,7 +795,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["action"]) && $_POST["
             // Sync to members.json
             MemberService::syncToJson($memberId);
             
-        } catch (Exception $memberErr) {
+        } catch (\Throwable $memberErr) {
             // Don't block the registration if member sync fails
             error_log('Auto-add to members failed: ' . $memberErr->getMessage());
         }
@@ -723,15 +804,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["action"]) && $_POST["
         try {
             $wasender = new WaSender();
             $wasender->sendRegistrationReceived($newData);
-        } catch (Exception $e) {
-            // لا نوقف العملية إذا فشل الإرسال
+        } catch (\Throwable $e) {
+            // لا نوقف العملية إذا فشل الإرسال (Throwable catches all PHP 7+ errors)
             error_log('WhatsApp send failed: ' . $e->getMessage());
         }
         
-        echo '✅ تم تسجيل طلبك بنجاح!' . "\n";
-        echo 'رقم التسجيل: ' . $wasel . "\n";
-        echo 'كود التسجيل: ' . $registrationCode . "\n";
-        echo 'سيتم مراجعة طلبك وإرسال رسالة لك عند القبول';
+        // Response was already sent above - just exit cleanly
+        exit;
     } else {
         http_response_code(500);
         echo 'حدث خطأ أثناء حفظ الطلب. يرجى المحاولة مرة أخرى.';

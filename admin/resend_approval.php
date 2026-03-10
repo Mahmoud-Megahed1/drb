@@ -79,7 +79,7 @@ try {
     }
 
     if ($needsSave) {
-        $saveResult = file_put_contents($dataFile, json_encode($registrations, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
+        $saveResult = file_put_contents($dataFile, json_encode($registrations, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
         if ($saveResult === false) {
              error_log("CRITICAL: Failed to write data.json in resend_approval.php for ID $wasel");
              echo json_encode(['success' => false, 'error' => 'فشل في حفظ توكن البادج (System Write Error)']);

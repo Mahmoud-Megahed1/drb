@@ -87,6 +87,8 @@ CREATE TABLE IF NOT EXISTS registrations (
     back_image TEXT,
     acceptance_image TEXT,
     edited_image TEXT,
+    license_front TEXT,
+    license_back TEXT,
     championship_name TEXT,
     FOREIGN KEY (member_id) REFERENCES members(id),
     FOREIGN KEY (championship_id) REFERENCES championships(id),

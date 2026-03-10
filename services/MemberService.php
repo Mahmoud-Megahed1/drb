@@ -1517,7 +1517,7 @@ class MemberService {
         ];
         
         $membersData[$code] = $memberRecord;
-        file_put_contents($membersFile, json_encode($membersData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
+        file_put_contents($membersFile, json_encode($membersData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
         
         // 4. Update data.json (registrations for scanners)
         if ($reg) {
@@ -1623,7 +1623,7 @@ class MemberService {
                 $dataJson[] = $dataNew;
             }
             
-            file_put_contents($dataFile, json_encode($dataJson, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
+            file_put_contents($dataFile, json_encode($dataJson, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
         }
         
         return true;

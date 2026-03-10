@@ -800,17 +800,63 @@ $fieldSettings = getFormFieldsSettings();
             $preview.html('');
             return;
           }
-          
-          // Show preview
-          const reader = new FileReader();
-          reader.onload = function(e) {
-            $preview.html('<img src="' + e.target.result + '" alt="Preview">');
-          }
-          reader.readAsDataURL(file);
+          // Generate compressed preview and store the compressed file on the input object
+          compressImageJS(file, 1200, 0.7, function(compressedBlob) {
+            // Update preview to use compressed data
+            const reader = new FileReader();
+            reader.onload = function(e) {
+              $preview.html('<img src="' + e.target.result + '" alt="Preview">');
+            }
+            reader.readAsDataURL(compressedBlob);
+            
+            // Convert Blob to File and attach it to the DOM element for later use
+            const compressedFile = new File([compressedBlob], file.name.replace(/\.[^/.]+$/, "") + ".webp", {
+                type: "image/webp",
+                lastModified: new Date().getTime()
+            });
+            // Store it as a custom property on the input element
+            document.getElementById(this.id).compressedFile = compressedFile;
+          }.bind(this));
         } else {
           $preview.html('');
         }
       });
+      
+      // Client-side image compression function
+      function compressImageJS(file, maxWidth, quality, callback) {
+          const reader = new FileReader();
+          reader.readAsDataURL(file);
+          reader.onload = function(event) {
+              const img = new Image();
+              img.src = event.target.result;
+              img.onload = function() {
+                  let width = img.width;
+                  let height = img.height;
+
+                  if (width > height) {
+                      if (width > maxWidth) {
+                          height = Math.round((height *= maxWidth / width));
+                          width = maxWidth;
+                      }
+                  } else {
+                      if (height > maxWidth) {
+                          width = Math.round((width *= maxWidth / height));
+                          height = maxWidth;
+                      }
+                  }
+
+                  const canvas = document.createElement('canvas');
+                  canvas.width = width;
+                  canvas.height = height;
+                  const ctx = canvas.getContext('2d');
+                  ctx.drawImage(img, 0, 0, width, height);
+
+                  canvas.toBlob(function(blob) {
+                      callback(blob);
+                  }, 'image/webp', quality); // Convert to WebP for massive size reduction
+              };
+          };
+      }
 
       // Form submission
       window.submitForm = function(event) {
@@ -891,7 +937,25 @@ $fieldSettings = getFormFieldsSettings();
 
         $('.status-message').html('جاري إرسال البيانات والصور ...').css('color', '#ffffff');
 
-        const formData = new FormData(form);
+        const formData = new FormData();
+        // Manually append all text fields from the form
+        for (const [key, value] of new FormData(form).entries()) {
+            // Skip the file inputs from the raw form data
+            if (value instanceof File) continue;
+            formData.append(key, value);
+        }
+        
+        // Append COMPRESSED files
+        const allFileInputsForUpload = document.querySelectorAll('input[type="file"]');
+        for (const input of allFileInputsForUpload) {
+            if (input.compressedFile) {
+                // We have a compressed version ready
+                formData.append(input.name, input.compressedFile, input.compressedFile.name);
+            } else if (input.files[0]) {
+                // Fallback to original if compression failed or didn't run
+                formData.append(input.name, input.files[0], input.files[0].name);
+            }
+        }
         
         // Add previous images paths to form data (if using quick registration)
         if (previousImages) {
@@ -932,6 +996,9 @@ $fieldSettings = getFormFieldsSettings();
               }
             }
             
+            // Get the phone number for check_status redirect
+            var phoneVal = document.getElementById('phone') ? document.getElementById('phone').value : '';
+            
             var successMsg = '✅ تم إرسال طلبك بنجاح!<br>سيتم مراجعة طلبك وإرسال رسالة لك عند القبول';
             if (regCode) {
               successMsg += '<div style="margin-top: 15px; padding: 15px; background: rgba(0,123,255,0.15); border: 1px solid rgba(0,123,255,0.4); border-radius: 10px; text-align: center;">' +
@@ -941,21 +1008,12 @@ $fieldSettings = getFormFieldsSettings();
                 '</div>';
             }
             
-            $('.status-message').html(successMsg).css('color', '#00ff00');
             
-            // Show WhatsApp group link
-            setTimeout(function() {
-              $('.status-message').append('<br><br><a href="<?= $groupLink ?>" target="_blank" class="whatsapp-link">🔗 انضم لمجموعة الواتساب</a>');
-            }, 500);
+            $('.status-message').html(successMsg).css('color', '#00ff00');
             
             $('#mainForm')[0].reset();
             $('.file-preview').html('');
             $('#btnsubmit').prop('disabled', true);
-
-            // Re-enable after 5 seconds
-            setTimeout(function() {
-              $('#btnsubmit').prop('disabled', false);
-            }, 5000);
           },
           error: function(xhr, status, error) {
             console.error(error);

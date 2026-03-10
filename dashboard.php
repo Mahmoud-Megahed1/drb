@@ -268,13 +268,19 @@ if (empty($participationLabels)) {
     require_once 'include/db.php';
     $pdo = db();
     
-    // Retrieve all members and their past participation count (excluding current championship)
+    // Retrieve members and past participation count using efficient JOIN (no correlated subquery)
     $champId = $pdo->query("SELECT value FROM system_settings WHERE key = 'current_championship_id'")->fetchColumn() ?: '1';
     
     $stmt = $pdo->prepare("
         SELECT m.permanent_code, 
-               (SELECT COUNT(*) FROM registrations r WHERE r.member_id = m.id AND r.status='approved' AND r.championship_id != ?) as past_championships
+               COALESCE(r_count.past_count, 0) as past_championships
         FROM members m
+        LEFT JOIN (
+            SELECT member_id, COUNT(*) as past_count 
+            FROM registrations 
+            WHERE status='approved' AND championship_id != ? AND is_active = 1
+            GROUP BY member_id
+        ) r_count ON r_count.member_id = m.id
     ");
     $stmt->execute([$champId]);
     $dbMembers = [];
@@ -565,6 +571,20 @@ if (empty($participationLabels)) {
                     </tr>
                 </thead>
                 <tbody>
+                    <?php 
+                    // PERFORMANCE FIX: Pre-load rounds.json ONCE before the loop
+                    $roundsDataFile = 'admin/data/rounds.json';
+                    $preloadedActiveRounds = [];
+                    if (file_exists($roundsDataFile)) {
+                        $allRounds = json_decode(file_get_contents($roundsDataFile), true) ?? [];
+                        foreach($allRounds as $rand) {
+                            if(isset($rand['is_active']) && $rand['is_active'] == 1) {
+                                $preloadedActiveRounds[] = $rand;
+                            }
+                        }
+                        usort($preloadedActiveRounds, function($a, $b) { return $a['round_number'] - $b['round_number']; });
+                    }
+                    ?>
                     <?php foreach ($inputs as $index => $input): 
                         $status = $input['status'] ?? 'pending';
                         $statusClass = 'status-' . $status;
@@ -650,6 +670,7 @@ if (empty($participationLabels)) {
                                         $cleanPath = ltrim($path, './');
                                     ?>
                                     <img src="<?= $cleanPath ?>" class="image-thumb" 
+                                         loading="lazy"
                                          onclick="showImage('<?= $cleanPath ?>', '<?= $type ?>')"
                                          title="<?= $type ?>"
                                          onerror="this.style.display='none'">
@@ -711,21 +732,11 @@ if (empty($participationLabels)) {
                                     </button>
                                     <ul class="dropdown-menu dropdown-menu-right" style="font-size: 13px;">
                                         <?php 
-                                        $roundsDataFile = 'admin/data/rounds.json';
-                                        $activeRounds = [];
-                                        if (file_exists($roundsDataFile)) {
-                                            $allRounds = json_decode(file_get_contents($roundsDataFile), true) ?? [];
-                                            foreach($allRounds as $rand) {
-                                                if(isset($rand['is_active']) && $rand['is_active'] == 1) {
-                                                    $activeRounds[] = $rand;
-                                                }
-                                            }
-                                            usort($activeRounds, function($a, $b) { return $a['round_number'] - $b['round_number']; });
-                                        }
-                                        if (empty($activeRounds)) {
+                                        // Use pre-loaded rounds data (not re-read per row)
+                                        if (empty($preloadedActiveRounds)) {
                                             echo '<li><a href="#">لا توجد جولات مفعلة</a></li>';
                                         } else {
-                                            foreach ($activeRounds as $arnd) {
+                                            foreach ($preloadedActiveRounds as $arnd) {
                                                 echo '<li><a href="#" onclick="resetRoundParticipant(\'' . $input['wasel'] . '\', \'' . $arnd['id'] . '\', \'' . htmlspecialchars($input['full_name'] ?? '') . '\')"><i class="fa-solid fa-flag-checkered"></i> ' . htmlspecialchars($arnd['round_name']) . '</a></li>';
                                             }
                                         }
