@@ -49,7 +49,7 @@ function normalizePhone($phone) {
 function generatePermanentCode($memberId) {
     $salt = getSetting('qr_salt') ?? 'DRB_SECRET_SALT_2025';
     $hash = hash('sha256', $salt . '_MEMBER_' . $memberId);
-    return strtoupper(substr($hash, 0, 12));
+    return strtoupper(substr($hash, 0, 6));
 }
 
 /**
