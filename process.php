@@ -567,7 +567,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["action"]) && $_POST["
             }
             
             // Generate unique filename
-            $filename = $wasel . '_' . $fileField . '_' . time() . '.' . $ext;
+            $filename = $wasel . '_' . $fileField . '_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
             $filepath = $uploadDir . $filename;
             
             // Move uploaded file WITHOUT compression (Fast Track) to prevent 503 Server Timeouts
@@ -873,14 +873,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["action"]) && $_POST["
             error_log('Auto-add to members failed: ' . $memberErr->getMessage());
         }
         
-        // إرسال إشعار WhatsApp للعميل
-        try {
-            $wasender = new WaSender();
-            $wasender->sendRegistrationReceived($newData);
-        } catch (\Throwable $e) {
-            // لا نوقف العملية إذا فشل الإرسال (Throwable catches all PHP 7+ errors)
-            error_log('WhatsApp send failed: ' . $e->getMessage());
-        }
+        // ❌ DISABLED: WhatsApp auto-send on registration (saves WhatsApp credits)
+        // To re-enable, uncomment the block below:
+        // try {
+        //     $wasender = new WaSender();
+        //     $wasender->sendRegistrationReceived($newData);
+        // } catch (\Throwable $e) {
+        //     error_log('WhatsApp send failed: ' . $e->getMessage());
+        // }
         
         // Response was already sent above - just exit cleanly
         exit;

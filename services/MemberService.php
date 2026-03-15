@@ -1443,8 +1443,14 @@ class MemberService {
         $stmt->execute([$memberId, $champId]);
         $reg = $stmt->fetch();
         
-        // 3. Update members.json
+        // 3. Update members.json WITH FILE LOCKING to prevent race conditions
         $membersFile = __DIR__ . '/../admin/data/members.json';
+        $membersLockFile = __DIR__ . '/../admin/data/members.lock';
+        $lockHandle = fopen($membersLockFile, 'w');
+        if ($lockHandle) {
+            flock($lockHandle, LOCK_EX); // Wait for exclusive lock
+        }
+        
         $membersData = [];
         if (file_exists($membersFile)) {
             $membersData = json_decode(file_get_contents($membersFile), true) ?? [];
@@ -1518,6 +1524,12 @@ class MemberService {
         
         $membersData[$code] = $memberRecord;
         file_put_contents($membersFile, json_encode($membersData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+        
+        // Release lock
+        if ($lockHandle) {
+            flock($lockHandle, LOCK_UN);
+            fclose($lockHandle);
+        }
         
         // 4. Update data.json (registrations for scanners)
         if ($reg) {
