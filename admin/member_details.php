@@ -971,7 +971,7 @@ $currentPage = 'member_details';
                                 </div>
                                 <?php if ($canEdit && empty($w['source'])): ?>
                                 <button class="btn btn-xs btn-success" onclick="resolveWarning('<?= $w['id'] ?>')"><i class="fa-solid fa-check"></i> حل</button>
-                                <button class="btn btn-xs btn-danger" onclick="deleteWarning('<?= $w['id'] ?>', '<?= $mid ?>')"><i class="fa-solid fa-trash"></i> حذف</button>
+                                <button class="btn btn-xs btn-danger" onclick="deleteWarning('<?= $w['id'] ?>', '<?= $memberId ?>')"><i class="fa-solid fa-trash"></i> حذف</button>
                                 <?php endif; ?>
                             </div>
                             <div style="font-size: 12px; color: #999; margin-top: 5px;">
