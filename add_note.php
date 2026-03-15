@@ -14,7 +14,7 @@ require_once 'services/MemberService.php';
 header('Content-Type: application/json; charset=utf-8');
 
 // Auth check - allow any logged-in admin/staff OR users with notes permission
-if (!isLoggedIn() && !hasPermission('notes')) {
+if (!isLoggedIn() || (!hasPermission('notes') && !hasPermission('admin'))) {
     jsonError('UNAUTHORIZED', [], 401);
 }
 

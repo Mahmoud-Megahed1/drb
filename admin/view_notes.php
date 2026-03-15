@@ -27,6 +27,29 @@ if (!$canView) {
 $message = '';
 $messageType = '';
 
+// Handle Delete Single Note/Warning
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_single']) && $canView) {
+    try {
+        require_once '../include/db.php';
+        $pdo = \db();
+        $deleteId = intval($_POST['delete_id'] ?? 0);
+        $deleteType = $_POST['delete_type'] ?? '';
+        
+        if ($deleteId > 0 && in_array($deleteType, ['warning', 'info', 'blocker'])) {
+            if ($deleteType === 'warning') {
+                $pdo->prepare("DELETE FROM warnings WHERE id = ?")->execute([$deleteId]);
+            } else {
+                $pdo->prepare("DELETE FROM notes WHERE id = ?")->execute([$deleteId]);
+            }
+            $message = "تم حذف السجل بنجاح!";
+            $messageType = "success";
+        }
+    } catch (\Exception $e) {
+        $message = "خطأ أثناء الحذف: " . $e->getMessage();
+        $messageType = "error";
+    }
+}
+
 // Handle Clear Logs
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['clear_all_logs']) && $isRoot) {
     try {
@@ -103,6 +126,8 @@ try {
     foreach($dbNotes as $note) {
         $allNotes[] = [
             'source' => 'db',
+            'db_id' => $note['id'],
+            'db_type' => $note['type'],
             'type' => $note['type'],
             'participant_name' => $note['participant_name'],
             'participant_id' => $note['participant_code'] ?? $note['participant_id'],
@@ -243,6 +268,7 @@ $notesLogs = $allNotes;
                         <th style="width: 70px;">الصورة</th>
                         <th style="width: 120px;">سُجلت بواسطة</th>
                         <th style="width: 140px;">التاريخ</th>
+                        <th style="width: 70px;">إجراء</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -305,6 +331,18 @@ $notesLogs = $allNotes;
             </td>
             <td><span class="recorded-by"><i class="fa-solid fa-user"></i> <?= htmlspecialchars($note['created_by']) ?></span></td>
             <td><small><?= date('Y-m-d H:i', $note['timestamp']) ?></small></td>
+            <td>
+                <?php if (!empty($note['db_id'])): ?>
+                <form method="POST" style="display:inline" onsubmit="return confirm('هل أنت متأكد من حذف هذا السجل؟')">
+                    <input type="hidden" name="delete_single" value="1">
+                    <input type="hidden" name="delete_id" value="<?= $note['db_id'] ?>">
+                    <input type="hidden" name="delete_type" value="<?= htmlspecialchars($note['db_type']) ?>">
+                    <button type="submit" class="btn btn-danger btn-xs" title="حذف"><i class="fa-solid fa-trash"></i></button>
+                </form>
+                <?php else: ?>
+                <span class="text-muted">-</span>
+                <?php endif; ?>
+            </td>
         </tr>
         <?php endforeach; ?>
     </tbody>

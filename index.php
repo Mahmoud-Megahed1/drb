@@ -483,7 +483,7 @@ $fieldSettings = getFormFieldsSettings();
           <div class="form-row">
             <div class="form-field half">
               <label for="car_year">سنة الصنع</label>
-              <input type="number" name="car_year" id="car_year" min="1980" max="2025" required placeholder="مثال: 2023">
+              <input type="number" name="car_year" id="car_year" min="1960" max="2025" required placeholder="مثال: 2023">
             </div>
 
             <div class="form-field half">

@@ -407,6 +407,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $response = ['success' => true, 'message' => 'تمت إضافة الملاحظة'];
         }
 
+        // Delete Warning
+        elseif ($_POST['action'] === 'delete_warning') {
+            $warnId = intval($_POST['warning_id'] ?? 0);
+            if ($warnId > 0) {
+                $stmt = $pdo->prepare("DELETE FROM warnings WHERE id = ?");
+                $stmt->execute([$warnId]);
+                auditLog('delete_warning', 'member', $_POST['member_id'] ?? 0, null, "Warning #$warnId", $currentUser->id ?? null);
+                $response = ['success' => true, 'message' => 'تم حذف التحذير'];
+            }
+        }
+
+        // Delete Note
+        elseif ($_POST['action'] === 'delete_note') {
+            $noteId = intval($_POST['note_id'] ?? 0);
+            if ($noteId > 0) {
+                $stmt = $pdo->prepare("DELETE FROM notes WHERE id = ?");
+                $stmt->execute([$noteId]);
+                auditLog('delete_note', 'member', $_POST['member_id'] ?? 0, null, "Note #$noteId", $currentUser->id ?? null);
+                $response = ['success' => true, 'message' => 'تم حذف الملاحظة'];
+            }
+        }
+
     } catch (Exception $e) {
         $response = ['success' => false, 'error' => $e->getMessage()];
     }
@@ -949,6 +971,7 @@ $currentPage = 'member_details';
                                 </div>
                                 <?php if ($canEdit && empty($w['source'])): ?>
                                 <button class="btn btn-xs btn-success" onclick="resolveWarning('<?= $w['id'] ?>')"><i class="fa-solid fa-check"></i> حل</button>
+                                <button class="btn btn-xs btn-danger" onclick="deleteWarning('<?= $w['id'] ?>', '<?= $mid ?>')"><i class="fa-solid fa-trash"></i> حذف</button>
                                 <?php endif; ?>
                             </div>
                             <div style="font-size: 12px; color: #999; margin-top: 5px;">
@@ -1495,6 +1518,38 @@ function resolveWarning(id) {
     $.post('member_details.php?id=<?= urlencode($memberId) ?>', {
         action: 'resolve_warning',
         warning_id: id
+    }, function(res) {
+        if (res.success) {
+            alert('✅ ' + res.message);
+            location.reload();
+        } else {
+            alert('❌ خطأ: ' + (res.error || 'فشل'));
+        }
+    });
+}
+
+function deleteWarning(id, memberId) {
+    if (!confirm('هل تريد حذف هذا التحذير نهائياً؟')) return;
+    $.post('member_details.php?id=<?= urlencode($memberId) ?>', {
+        action: 'delete_warning',
+        warning_id: id,
+        member_id: memberId
+    }, function(res) {
+        if (res.success) {
+            alert('✅ ' + res.message);
+            location.reload();
+        } else {
+            alert('❌ خطأ: ' + (res.error || 'فشل'));
+        }
+    });
+}
+
+function deleteNote(id, memberId) {
+    if (!confirm('هل تريد حذف هذه الملاحظة نهائياً؟')) return;
+    $.post('member_details.php?id=<?= urlencode($memberId) ?>', {
+        action: 'delete_note',
+        note_id: id,
+        member_id: memberId
     }, function(res) {
         if (res.success) {
             alert('✅ ' + res.message);

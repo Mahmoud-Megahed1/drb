@@ -14,10 +14,10 @@ $isRoot = (isset($currentUser->username) && $currentUser->username === 'root');
 $userRole = $currentUser->role ?? ($isRoot ? 'root' : 'viewer');
 if ($isRoot) $userRole = 'root';
 
-$canApprove = in_array($userRole, ['root', 'approver']);
-$canDelete = ($userRole === 'root');
-$canManageSettings = ($userRole === 'root');
-$canSendWhatsapp = in_array($userRole, ['root', 'whatsapp']);
+$canApprove = in_array($userRole, ['root', 'admin', 'approver']);
+$canDelete = in_array($userRole, ['root', 'admin']);
+$canManageSettings = in_array($userRole, ['root', 'admin']);
+$canSendWhatsapp = in_array($userRole, ['root', 'admin', 'whatsapp']);
 
 // Redirect Simplified Users to their respective tools
 if ($userRole === 'gate') {

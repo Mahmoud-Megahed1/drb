@@ -739,9 +739,11 @@ class WaSender {
         }
         
         if ($locked) {
+            clearstatcache(true, $this->queueFile);
             $size = filesize($this->queueFile);
             $queue = [];
             if ($size > 0) {
+                rewind($fp);
                 $content = fread($fp, $size);
                 $queue = json_decode($content, true) ?: [];
             }

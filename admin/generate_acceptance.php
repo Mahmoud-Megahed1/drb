@@ -433,7 +433,11 @@ try {
                 }
                 
                 $countryCode = $foundReg['country_code'] ?? '+964';
-                $badgeResult = $wasender->sendImage($foundReg['phone'], $badgeUrl, $badgeCaption, $countryCode);
+                $badgeResult = $wasender->sendImage($foundReg['phone'], $badgeUrl, $badgeCaption, $countryCode, [
+                    'type' => 'badge',
+                    'name' => $foundReg['full_name'] ?? 'مشترك',
+                    'wasel' => $foundReg['wasel'] ?? ''
+                ]);
             } else {
                 // Fallback to text message if image generation fails
                 $badgeMessage = "🎫 *باج دخول الحلبة*\n━━━━━━━━━━━━━━━\n\n";

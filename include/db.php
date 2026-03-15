@@ -40,6 +40,19 @@ class Database {
         $migrations = [
             "ALTER TABLE registrations ADD COLUMN license_front TEXT",
             "ALTER TABLE registrations ADD COLUMN license_back TEXT",
+            "ALTER TABLE members ADD COLUMN last_car_type TEXT",
+            "ALTER TABLE members ADD COLUMN last_car_year TEXT",
+            "ALTER TABLE members ADD COLUMN last_car_color TEXT",
+            "ALTER TABLE members ADD COLUMN last_engine_size TEXT",
+            "ALTER TABLE members ADD COLUMN last_plate_letter TEXT",
+            "ALTER TABLE members ADD COLUMN last_plate_number TEXT",
+            "ALTER TABLE members ADD COLUMN last_plate_governorate TEXT",
+            "ALTER TABLE members ADD COLUMN last_participation_type TEXT",
+            "ALTER TABLE members ADD COLUMN instagram TEXT",
+            "ALTER TABLE members ADD COLUMN personal_photo TEXT",
+            "ALTER TABLE members ADD COLUMN national_id_front TEXT",
+            "ALTER TABLE members ADD COLUMN national_id_back TEXT",
+            "ALTER TABLE warnings ADD COLUMN expires_at DATETIME"
         ];
         foreach ($migrations as $sql) {
             try { $this->pdo->exec($sql); } catch (\Exception $e) { /* column already exists */ }

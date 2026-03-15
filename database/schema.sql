@@ -191,6 +191,7 @@ CREATE TABLE IF NOT EXISTS warnings (
     championship_id INTEGER,                 -- NULL = global warning
     warning_text TEXT NOT NULL,
     severity TEXT DEFAULT 'low' CHECK(severity IN ('low', 'medium', 'high')),
+    expires_at DATETIME,
     is_resolved BOOLEAN DEFAULT 0,
     resolved_by INTEGER,
     resolved_at DATETIME,
