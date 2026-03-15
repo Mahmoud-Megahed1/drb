@@ -14,7 +14,10 @@ if (!isset($_SESSION['user']) || empty($_SESSION['user'])) {
 $currentUser = $_SESSION['user'];
 $isRoot = (is_object($currentUser) ? ($currentUser->username ?? '') : ($currentUser['username'] ?? '')) === 'root';
 $userRole = (is_object($currentUser) ? ($currentUser->role ?? '') : ($currentUser['role'] ?? '')) ?: ($isRoot ? 'root' : 'viewer');
-$canView = in_array($userRole, ['root', 'approver', 'notes']);
+if ($isRoot) $userRole = 'root'; // Force root role if username is root
+if (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'admin') $userRole = 'root';
+
+$canView = in_array($userRole, ['root', 'admin', 'approver', 'notes']);
 
 if (!$canView) {
     header('Location: ../dashboard.php');

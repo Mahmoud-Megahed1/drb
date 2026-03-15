@@ -340,6 +340,13 @@ $fieldSettings = getFormFieldsSettings();
     <div class="form-container">
       <form name="registrationForm" method="post" enctype="multipart/form-data" onsubmit="submitForm(event)" id="mainForm">
 
+        <!-- Check Status Button -->
+        <div style="text-align: center; margin-bottom: 25px;">
+            <a href="check_status.php" class="btn" style="background: linear-gradient(135deg, #28a745, #218838); color: white; padding: 12px 30px; border-radius: 30px; font-weight: bold; font-size: 16px; box-shadow: 0 4px 15px rgba(40, 167, 69, 0.4); text-decoration: none; display: inline-flex; align-items: center; gap: 8px;">
+                <i class="fa-solid fa-magnifying-glass"></i> تفقد حالة التسجيل الخاصة بك
+            </a>
+        </div>
+
         <!-- Quick Registration Section -->
         <div class="form-section" style="background: linear-gradient(135deg, rgba(0,123,255,0.1), rgba(0,200,150,0.1)); border: 2px solid rgba(0,123,255,0.3);">
           <h3 class="section-title" style="color: #00bfff;">
@@ -861,6 +868,12 @@ $fieldSettings = getFormFieldsSettings();
       // Form submission
       window.submitForm = function(event) {
         event.preventDefault();
+        
+        // DOUBLE-SUBMIT PREVENTION
+        if (window._submitting) {
+          return; // Already submitting, ignore
+        }
+        window._submitting = true;
         $('#btnsubmit').prop('disabled', true);
 
         // Validate form
@@ -868,6 +881,7 @@ $fieldSettings = getFormFieldsSettings();
         if (!form.checkValidity()) {
           form.reportValidity();
           $('#btnsubmit').prop('disabled', false);
+          window._submitting = false;
           return;
         }
 
@@ -908,12 +922,13 @@ $fieldSettings = getFormFieldsSettings();
           if (!fileInput) continue; // Should not happen if HTML is correct
 
           const file = fileInput.files[0];
-          const hasPreviousImage = previousImages && previousImages[fileId];
+          const hasPreviousImage = previousImages && previousImages[fileId] && previousImages[fileId].length > 0;
           
           // If no new file AND no previous image, require upload
           if (!file && !hasPreviousImage) {
             alert('يرجى رفع: ' + fileLabels[fileId]);
             $('#btnsubmit').prop('disabled', false);
+            window._submitting = false;
             return;
           }
           
@@ -931,8 +946,34 @@ $fieldSettings = getFormFieldsSettings();
             if (input.files[0] && input.files[0].size > MAX_FILE_SIZE) {
                 alert('حجم الملف كبير جداً: ' + (fileLabels[input.id] || input.id));
                  $('#btnsubmit').prop('disabled', false);
+                 window._submitting = false;
                  return;
             }
+        }
+
+        // TOTAL IMAGE COUNT VALIDATION
+        // Count how many images the user is actually providing
+        const allImageFields = ['front_image', 'back_image', 'id_front', 'id_back', 'personal_photo', 'license_front', 'license_back'];
+        let totalImagesProvided = 0;
+        let minRequired = 2; // front + back always
+        
+        if (settings.id_front_enabled && settings.id_front_required) minRequired++;
+        if (settings.id_back_enabled && settings.id_back_required) minRequired++;
+        if (settings.personal_photo_enabled && settings.personal_photo_required) minRequired++;
+        if (settings.license_images_enabled && settings.license_images_required) minRequired += 2;
+        
+        for (const fid of allImageFields) {
+            const inp = document.getElementById(fid);
+            const hasNew = inp && inp.files && inp.files[0];
+            const hasPrev = previousImages && previousImages[fid] && previousImages[fid].length > 0;
+            if (hasNew || hasPrev) totalImagesProvided++;
+        }
+        
+        if (totalImagesProvided < minRequired) {
+            alert('يجب رفع ' + minRequired + ' صور على الأقل. تم تقديم ' + totalImagesProvided + ' صور فقط.');
+            $('#btnsubmit').prop('disabled', false);
+            window._submitting = false;
+            return;
         }
 
         $('.status-message').html('جاري إرسال البيانات والصور ...').css('color', '#ffffff');
@@ -987,7 +1028,11 @@ $fieldSettings = getFormFieldsSettings();
             var lines = (response || '').split('\n');
             var waselNum = '';
             var regCode = usedRegistrationCode || '';
+            var isUpdate = false;
             for (var i = 0; i < lines.length; i++) {
+              if (lines[i].indexOf('UPDATE_MODE') !== -1) {
+                isUpdate = true;
+              }
               if (lines[i].indexOf('رقم التسجيل:') !== -1) {
                 waselNum = lines[i].replace('رقم التسجيل:', '').trim();
               }
@@ -999,7 +1044,10 @@ $fieldSettings = getFormFieldsSettings();
             // Get the phone number for check_status redirect
             var phoneVal = document.getElementById('phone') ? document.getElementById('phone').value : '';
             
-            var successMsg = '✅ تم إرسال طلبك بنجاح!<br>سيتم مراجعة طلبك وإرسال رسالة لك عند القبول';
+            var successMsg = isUpdate
+              ? '✅ تم تحديث بياناتك بنجاح!<br>لقد تم العثور على تسجيلك المسبق في النظام وتم تحديث معلوماتك وصورك بنجاح.'
+              : '✅ تم إرسال طلبك بنجاح!<br>سيتم مراجعة طلبك وإرسال رسالة لك عند القبول';
+
             if (regCode) {
               successMsg += '<div style="margin-top: 15px; padding: 15px; background: rgba(0,123,255,0.15); border: 1px solid rgba(0,123,255,0.4); border-radius: 10px; text-align: center;">' +
                 '<span style="color: #00bfff; font-size: 14px;">🔑 كود التسجيل الخاص بك:</span><br>' +
@@ -1020,6 +1068,7 @@ $fieldSettings = getFormFieldsSettings();
             console.error(xhr.responseText);
             $('.status-message').html('❌ حدث خطأ أثناء الإرسال. يرجى المحاولة مرة أخرى.<br>' + (xhr.responseText || error)).css('color', '#ff0000');
             $('#btnsubmit').prop('disabled', false);
+            window._submitting = false;
           }
         });
       }

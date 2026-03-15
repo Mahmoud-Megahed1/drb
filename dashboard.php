@@ -710,6 +710,9 @@ if (empty($participationLabels)) {
                                 <a href="admin/visual_editor.php?wasel=<?= $input['wasel'] ?>" class="btn btn-primary btn-sm" style="margin-bottom: 3px;">
                                     🎨 تعديل الصورة
                                 </a>
+                                <a href="admin/member_details.php?id=<?= urlencode($input['registration_code'] ?? $input['member_id'] ?? '') ?>" class="btn btn-default btn-sm" style="margin-bottom: 3px;" target="_blank">
+                                    👤 الملف الشخصي
+                                </a>
                                 <button class="btn btn-approve" onclick='approveRegistration("<?= $input['wasel'] ?>", <?= $globalMsgPrefsJson ?>)'>
                                     ✅ قبول سريع
                                 </button>

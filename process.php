@@ -350,7 +350,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["action"]) && $_POST["
         mkdir('admin/data', 0777, true);
     }
     
-    // Read existing data
+    // ===================================================================
+    // CRITICAL FIX: File locking to prevent race-condition duplicates
+    // This ensures only ONE registration can read+write data.json at a time
+    // ===================================================================
+    $lockFile = fopen('admin/data/data.lock', 'w');
+    if (!flock($lockFile, LOCK_EX | LOCK_NB)) {
+        // Could not acquire lock immediately, wait up to 10 seconds
+        $lockAcquired = false;
+        for ($i = 0; $i < 20; $i++) {
+            usleep(500000); // 0.5 seconds
+            if (flock($lockFile, LOCK_EX | LOCK_NB)) {
+                $lockAcquired = true;
+                break;
+            }
+        }
+        if (!$lockAcquired) {
+            fclose($lockFile);
+            http_response_code(503);
+            echo 'النظام مشغول حالياً، يرجى المحاولة مرة أخرى بعد ثوانٍ.';
+            exit;
+        }
+    }
+    
+    // Read existing data (inside lock)
     $existingData = [];
     if (file_exists($data_file_location)) {
         $existingData = json_decode(file_get_contents($data_file_location), true);
@@ -359,95 +382,98 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["action"]) && $_POST["
         }
     }
     
-    // Check for duplicate plate number (prevent same car registering twice)
-    // Skip this check if using quick registration code (user is updating their registration)
+    // ===================================================================
+    // UNIFIED IDENTITY DETECTION — UPDATE instead of REJECT
+    // If same person registers again (by phone or plate), we UPDATE their
+    // record and keep the same wasel/code/barcode. NOT a new registration.
+    // ===================================================================
     $usedRegCode = $_POST['used_registration_code'] ?? '';
-    $newPlate = trim($_POST['plate_letter']) . ' ' . trim($_POST['plate_number']) . ' - ' . trim($_POST['plate_governorate']);
     $normalizedPhone = $_POST['phone']; // Already normalized above
+    $np_num = normalizePlateStr($_POST['plate_number'] ?? '');
+    $np_let = normalizePlateStr($_POST['plate_letter'] ?? '');
+    $np_gov = normalizePlateStr($_POST['plate_governorate'] ?? '');
+    
+    // Track if we found an existing match
+    $existingMatch = null;      // The matched entry from data.json
+    $existingMatchKey = null;   // Its array index
+    $isUpdateMode = false;      // Will be true if updating existing registration
     
     foreach ($existingData as $key => $item) {
-        // Skip if updating own registration
+        $matched = false;
+        
+        // Match 1: By registration code (from quick registration)
         if (!empty($usedRegCode) && isset($item['registration_code']) && $item['registration_code'] === $usedRegCode) {
-            // User is updating their registration - remove old entry
+            $matched = true;
+        }
+        
+        // Match 2: By phone number (primary identity)
+        if (!$matched) {
+            $existingPhone = preg_replace('/\D/', '', $item['phone'] ?? '');
+            if (str_starts_with($existingPhone, '964')) {
+                $existingPhone = substr($existingPhone, 3);
+            }
+            if (strlen($existingPhone) === 11 && str_starts_with($existingPhone, '07')) {
+                $existingPhone = substr($existingPhone, 1);
+            }
+            if ($existingPhone === $normalizedPhone && !empty($normalizedPhone)) {
+                $matched = true;
+            }
+        }
+        
+        // Match 3: By plate number (secondary identity)
+        if (!$matched && $np_num !== '' && $np_let !== '' && $np_gov !== '') {
+            $ep_num = normalizePlateStr($item['plate_number'] ?? '');
+            $ep_let = normalizePlateStr($item['plate_letter'] ?? '');
+            $ep_gov = normalizePlateStr($item['plate_governorate'] ?? '');
+            
+            if ($ep_num !== '' && $ep_let !== '' && $ep_gov !== '' &&
+                $ep_num === $np_num && $ep_let === $np_let && $ep_gov === $np_gov) {
+                $matched = true;
+            }
+        }
+        
+        if ($matched) {
+            $existingMatch = $item;
+            $existingMatchKey = $key;
+            $isUpdateMode = true;
+            // Remove old entry — we'll insert the updated one later
             unset($existingData[$key]);
-            $existingData = array_values($existingData); // Re-index array
+            $existingData = array_values($existingData);
             break;
-        }
-        
-        // Check phone uniqueness
-        $existingPhone = preg_replace('/\D/', '', $item['phone'] ?? '');
-        
-        // Normalize existing phone to 10 digits starting with 7
-        if (str_starts_with($existingPhone, '964')) {
-            $existingPhone = substr($existingPhone, 3);
-        }
-        if (strlen($existingPhone) === 11 && str_starts_with($existingPhone, '07')) {
-            $existingPhone = substr($existingPhone, 1);
-        }
-        if (strlen($existingPhone) === 9 && str_starts_with($existingPhone, '7')) {
-            // This case shouldn't happen for Iraqi mobiles but just in case
-        }
-        
-        if ($existingPhone === $normalizedPhone) {
-            http_response_code(400);
-            echo "🛑 رقم الهاتف مسجّل مسبقاً في هذه البطولة!";
-            if (!empty($item['registration_code'])) {
-                echo "<br><br>كود التسجيل الخاص بك هو: <strong>" . $item['registration_code'] . "</strong>";
-                echo "<br>جاري جلب بياناتك السابقة تلقائياً للتعديل عليها...";
-                echo "<script>
-                        document.getElementById('registration_code').value = '" . $item['registration_code'] . "'; 
-                        window.scrollTo({top: document.getElementById('registration_code').offsetTop - 100, behavior: 'smooth'}); 
-                        setTimeout(lookupCode, 800);
-                      </script>";
-            }
-            exit;
-        }
-        
-        // Check plate uniqueness (robust check by individual fields)
-        $plateMatch = false;
-        
-        $np_num = normalizePlateStr($_POST['plate_number'] ?? '');
-        $np_let = normalizePlateStr($_POST['plate_letter'] ?? '');
-        $np_gov = normalizePlateStr($_POST['plate_governorate'] ?? '');
-        
-        $ep_num = normalizePlateStr($item['plate_number'] ?? '');
-        $ep_let = normalizePlateStr($item['plate_letter'] ?? '');
-        $ep_gov = normalizePlateStr($item['plate_governorate'] ?? '');
-
-        if (
-            $ep_num !== '' && $ep_let !== '' && $ep_gov !== '' &&
-            $ep_num === $np_num && $ep_let === $np_let && $ep_gov === $np_gov
-        ) {
-            $plateMatch = true;
-        } elseif (
-            isset($item['plate_full']) && 
-            normalizePlateStr($item['plate_full']) === normalizePlateStr($newPlate)
-        ) {
-            $plateMatch = true;
-        }
-
-        if ($plateMatch) {
-            http_response_code(400);
-            echo "🚗 عذراً، هذه السيارة (رقم اللوحة) مسجلة بالفعل في هذه البطولة!";
-            if (!empty($item['registration_code'])) {
-                 echo "<br><br>كود التسجيل الخاص بك هو: <strong>" . $item['registration_code'] . "</strong>";
-                 echo "<br>جاري جلب بياناتك السابقة تلقائياً للتعديل عليها...";
-                 echo "<script>
-                        setTimeout(function() {
-                            var rc = document.getElementById('registration_code');
-                            if(rc) { 
-                                rc.value = '" . $item['registration_code'] . "'; 
-                                rc.scrollIntoView({ behavior: 'smooth', block: 'center' }); 
-                                setTimeout(lookupCode, 800);
-                            }
-                        }, 100);
-                      </script>";
-            }
-            exit;
         }
     }
     
-    // Generate registration ID - find max existing ID and add 1
+    // Also check members.json for returning users (previous championships)
+    if (!$isUpdateMode && empty($usedRegCode)) {
+        $membersFile = 'admin/data/members.json';
+        if (file_exists($membersFile)) {
+            $members = json_decode(file_get_contents($membersFile), true) ?? [];
+            foreach ($members as $mCode => $member) {
+                // Match by phone
+                $p1 = substr(preg_replace('/[^0-9]/', '', $member['phone'] ?? ''), -10);
+                $p2 = substr(preg_replace('/[^0-9]/', '', $_POST['phone'] ?? ''), -10);
+                if ($p1 === $p2 && !empty($p1)) {
+                    $usedRegCode = $mCode;
+                    break;
+                }
+                // Match by plate
+                $mp_num = normalizePlateStr($member['plate_number'] ?? '');
+                $mp_let = normalizePlateStr($member['plate_letter'] ?? '');
+                $mp_gov = normalizePlateStr($member['plate_governorate'] ?? '');
+                if ($mp_num !== '' && $mp_let !== '' && $mp_gov !== '' &&
+                    $mp_num === $np_num && $mp_let === $np_let && $mp_gov === $np_gov) {
+                    $usedRegCode = $mCode;
+                    break;
+                }
+            }
+        }
+    }
+    
+    // ===================================================================
+    // FIX: Use dedicated counter file to prevent ID jumps
+    // This prevents imported/deleted records from inflating the counter
+    // ===================================================================
+    $counterFile = 'admin/data/wasel_counter.json';
     $maxWasel = 0;
     foreach ($existingData as $item) {
         $currentWasel = intval($item['wasel'] ?? 0);
@@ -455,7 +481,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["action"]) && $_POST["
             $maxWasel = $currentWasel;
         }
     }
-    $wasel = $maxWasel + 1;
+    
+    // Read counter file (if exists, use the higher of counter or max)
+    $counterNext = $maxWasel + 1;
+    if (file_exists($counterFile)) {
+        $counterData = json_decode(file_get_contents($counterFile), true);
+        if (isset($counterData['next_wasel'])) {
+            // Use counter only if it's reasonable (within 50 of the actual max)
+            // This prevents a corrupted/old counter from creating huge gaps
+            if ($counterData['next_wasel'] <= $maxWasel + 50) {
+                $counterNext = max($counterData['next_wasel'], $maxWasel + 1);
+            }
+        }
+    }
+    $wasel = $counterNext;
     
     // Process AND upload ALL possible image fields (even if not mandatory)
     $imagePaths = [];
@@ -492,6 +531,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["action"]) && $_POST["
                 }
                 http_response_code(400);
                 echo "فشل في رفع الصورة ($fileField): $errorMsg";
+                if (isset($lockFile)) { flock($lockFile, LOCK_UN); fclose($lockFile); }
                 exit;
             }
             
@@ -499,6 +539,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["action"]) && $_POST["
             if ($file['size'] > $maxFileSize) {
                 http_response_code(400);
                 echo 'حجم الملف كبير جداً: ' . $fileField . ' (الحد الأقصى 100MB)';
+                if (isset($lockFile)) { flock($lockFile, LOCK_UN); fclose($lockFile); }
                 exit;
             }
             
@@ -508,7 +549,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["action"]) && $_POST["
             
             if (!in_array($ext, $allowedExts)) {
                 http_response_code(400);
-                echo 'نوع الملف غير مدعوم: ' . $fileField;
+                echo 'نوع الملف غير مدعوم (' . htmlspecialchars($ext) . '). الأنواع المسموحة: ' . implode(', ', $allowedExts) . ' — الحقل: ' . $fileField;
+                if (isset($lockFile)) { flock($lockFile, LOCK_UN); fclose($lockFile); }
+                exit;
+            }
+            
+            // MIME type validation — reject files that pretend to be images
+            $allowedMimes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/heif'];
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $detectedMime = finfo_file($finfo, $file['tmp_name']);
+            finfo_close($finfo);
+            if (!in_array($detectedMime, $allowedMimes)) {
+                http_response_code(400);
+                echo 'الملف ليس صورة حقيقية: ' . $fileField . ' (النوع المكتشف: ' . htmlspecialchars($detectedMime) . '). يرجى رفع صورة بصيغة JPG أو PNG أو WebP.';
+                if (isset($lockFile)) { flock($lockFile, LOCK_UN); fclose($lockFile); }
                 exit;
             }
             
@@ -523,12 +577,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["action"]) && $_POST["
             } else {
                 http_response_code(500);
                 echo 'فشل استثنائي في حفظ الملف على السيرفر: ' . $fileField;
+                if (isset($lockFile)) { flock($lockFile, LOCK_UN); fclose($lockFile); }
                 exit;
             }
         } elseif (isset($previousImages[$fileField]) && !empty($previousImages[$fileField])) {
             // Use previous image path
             $imagePaths[$fileField] = $previousImages[$fileField];
         }
+    }
+    
+    // ===================================================================
+    // FIX: Validate TOTAL image count — all registrations must be complete
+    // Count how many images (new + previous) the user is providing
+    // ===================================================================
+    $totalImagesProvided = 0;
+    foreach ($allPossibleFiles as $f) {
+        $hasNewFile = isset($_FILES[$f]) && $_FILES[$f]['error'] === UPLOAD_ERR_OK;
+        $hasPreviousImage = isset($previousImages[$f]) && !empty($previousImages[$f]);
+        if ($hasNewFile || $hasPreviousImage) {
+            $totalImagesProvided++;
+        }
+    }
+    
+    // Calculate minimum required based on settings
+    $minImagesRequired = 2; // front_image + back_image always required
+    if ($fieldSettings['id_front_enabled'] && $fieldSettings['id_front_required']) $minImagesRequired++;
+    if ($fieldSettings['id_back_enabled'] && $fieldSettings['id_back_required']) $minImagesRequired++;
+    if ($fieldSettings['personal_photo_enabled'] && $fieldSettings['personal_photo_required']) $minImagesRequired++;
+    if ($fieldSettings['license_images_enabled'] && $fieldSettings['license_images_required']) $minImagesRequired += 2;
+    
+    if ($totalImagesProvided < $minImagesRequired) {
+        // Release lock before exiting
+        if (isset($lockFile)) { flock($lockFile, LOCK_UN); fclose($lockFile); }
+        http_response_code(400);
+        echo "يجب رفع $minImagesRequired صور على الأقل. تم تقديم $totalImagesProvided صور فقط.";
+        exit;
     }
     
     // Participation type labels
@@ -562,56 +645,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["action"]) && $_POST["
         'other' => 'أخرى'
     ];
     
-    // Smart Check: If usedRegCode is empty, try to find existing member by PLATE
-    // This ensures returning users keep their code even if they didn't use quick register
-    if (empty($usedRegCode)) {
-        $membersFile = 'admin/data/members.json';
-        if (file_exists($membersFile)) {
-            $members = json_decode(file_get_contents($membersFile), true) ?? [];
-            $checkPlate = trim($_POST['plate_letter']) . ' ' . trim($_POST['plate_number']) . ' - ' . trim($_POST['plate_governorate']);
-            
-            foreach ($members as $mCode => $member) {
-                $mPlate = trim($member['plate_letter'] ?? '') . ' ' . trim($member['plate_number'] ?? '') . ' - ' . trim($member['plate_governorate'] ?? '');
-                
-                // Match by Plate
-                if ($mPlate === $checkPlate && !empty($checkPlate)) {
-                    $usedRegCode = $mCode; // Found user! Use their code.
-                    break;
-                }
-                
-                // Fallback: Match by Name AND Phone (if plate is missing or changed)
-                $mName = trim($member['full_name'] ?? '');
-                $checkName = trim($_POST['full_name'] ?? '');
-                
-                // Normalize phones (take last 10 digits to ignore country code diffs)
-                $p1 = substr(preg_replace('/[^0-9]/', '', $member['phone'] ?? ''), -10);
-                $p2 = substr(preg_replace('/[^0-9]/', '', $_POST['phone'] ?? ''), -10);
-                
-                if ($mName === $checkName && $p1 === $p2 && !empty($p1)) {
-                    $usedRegCode = $mCode; // Found user! Use their code.
-                    break;
-                }
-            }
-        }
-    }
-
-    // Generate or preserve registration code
-    // If using quick registration with previous code, KEEP THE OLD CODE
-    // This maintains the link with members.json for returning users
-    if (!empty($usedRegCode)) {
-        // User is registering with their old code - keep it
-        $registrationCode = $usedRegCode;
+    // ===================================================================
+    // IDENTITY RESOLUTION: Determine wasel, code, and badge
+    // If UPDATE MODE: reuse existing wasel/code/badge
+    // If RETURNING USER (from members.json): reuse code, new wasel/badge
+    // If NEW USER: generate everything fresh
+    // ===================================================================
+    if ($isUpdateMode && $existingMatch) {
+        // UPDATE MODE — keep the same identity
+        $wasel = $existingMatch['wasel'];
+        $registrationCode = $existingMatch['registration_code'];
+        $badgeId = $existingMatch['badge_id'] ?? bin2hex(random_bytes(16));
+        $isReturningUser = true;
     } else {
-        // New user - generate new code
-        $registrationCode = generateRegistrationCode($existingData);
+        // Check members.json for returning users (usedRegCode set from earlier check)
+        if (!empty($usedRegCode)) {
+            $registrationCode = $usedRegCode;
+            $isReturningUser = true;
+        } else {
+            $registrationCode = generateRegistrationCode($existingData);
+            $isReturningUser = false;
+        }
+        $badgeId = bin2hex(random_bytes(16));
     }
     
-    // Generate encrypted badge ID (32 characters, cannot be guessed)
-    $badgeId = bin2hex(random_bytes(16));
-    
-    // Build new data entry
-    // Determine if this is a new or returning user
-    $isReturningUser = !empty($usedRegCode);
     $registerType = $isReturningUser ? 'returning' : 'new';
     $registerTypeLabel = $isReturningUser ? 'مسجل قديم' : 'جديد';
     
@@ -652,15 +709,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["action"]) && $_POST["
     $newJsonString = json_encode($existingData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
     if (file_put_contents($data_file_location, $newJsonString)) {
         
+        // Update wasel counter file
+        file_put_contents($counterFile, json_encode(['next_wasel' => $wasel + 1], JSON_PRETTY_PRINT));
+        
+        // Release file lock — data is safely written
+        if (isset($lockFile)) { flock($lockFile, LOCK_UN); fclose($lockFile); }
+        
         // ===================================================================
         // CRITICAL FIX: Send response to browser IMMEDIATELY after data.json save.
         // All heavy operations (SQLite, members.json sync, WhatsApp) run AFTER
         // the browser receives the response. This prevents 503 timeout on Hostinger.
         // ===================================================================
-        $responseText = '✅ تم تسجيل طلبك بنجاح!' . "\n";
-        $responseText .= 'رقم التسجيل: ' . $wasel . "\n";
-        $responseText .= 'كود التسجيل: ' . $registrationCode . "\n";
-        $responseText .= 'سيتم مراجعة طلبك وإرسال رسالة لك عند القبول';
+        if ($isUpdateMode) {
+            // UPDATE response — tell user their data was updated
+            $responseText = 'UPDATE_MODE' . "\n";
+            $responseText .= '✅ تم تحديث بياناتك لأنك مسجل مسبقاً!' . "\n";
+            $responseText .= 'رقم التسجيل: ' . $wasel . "\n";
+            $responseText .= 'كود التسجيل: ' . $registrationCode . "\n";
+            $responseText .= 'تم تحديث جميع بياناتك وصورك بنجاح';
+        } else {
+            // NEW registration response
+            $responseText = '✅ تم تسجيل طلبك بنجاح!' . "\n";
+            $responseText .= 'رقم التسجيل: ' . $wasel . "\n";
+            $responseText .= 'كود التسجيل: ' . $registrationCode . "\n";
+            $responseText .= 'سيتم مراجعة طلبك وإرسال رسالة لك عند القبول';
+        }
         
         // Send response early - close connection to browser
         http_response_code(200);
@@ -812,6 +885,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["action"]) && $_POST["
         // Response was already sent above - just exit cleanly
         exit;
     } else {
+        if (isset($lockFile)) { flock($lockFile, LOCK_UN); fclose($lockFile); }
         http_response_code(500);
         echo 'حدث خطأ أثناء حفظ الطلب. يرجى المحاولة مرة أخرى.';
     }
