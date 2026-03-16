@@ -956,20 +956,33 @@ if (empty($participationLabels)) {
 <div class="modal fade" id="rejectModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
-            <div class="modal-header">
-                <button type="button" class="close" data-dismiss="modal">&times;</button>
-                <h4 class="modal-title">❌ رفض التسجيل</h4>
+            <div class="modal-header" style="background: linear-gradient(135deg, #dc3545, #c82333); color: white; border-radius: 6px 6px 0 0;">
+                <button type="button" class="close" data-dismiss="modal" style="color: white; opacity: 1;">&times;</button>
+                <h4 class="modal-title">🔄 رفض التسجيل (مع طلب مراجعة)</h4>
             </div>
             <div class="modal-body">
                 <input type="hidden" id="rejectWasel">
+                <div class="alert alert-info" style="font-size: 13px; margin-bottom: 15px;">
+                    <i class="fa-solid fa-circle-info"></i>
+                    <strong>ملاحظة:</strong> سيتم إرسال رسالة للمشترك تطلب منه مراجعة وتعديل بياناته وإعادة التسجيل.
+                </div>
                 <div class="form-group">
-                    <label>سبب الرفض (اختياري):</label>
-                    <textarea id="rejectReason" class="form-control" rows="3" placeholder="أدخل سبب الرفض..."></textarea>
+                    <label><strong>سبب الرفض / ملاحظات التعديل المطلوبة:</strong></label>
+                    <textarea id="rejectReason" class="form-control" rows="4" placeholder="مثال: يرجى تعديل صورة السيارة لتكون أوضح...
+أو: البيانات غير مكتملة، يرجى إعادة التسجيل مع إضافة صورة الهوية"></textarea>
+                </div>
+                <div class="form-group">
+                    <div class="checkbox" style="background: #f8f9fa; padding: 10px; border-radius: 8px;">
+                        <label>
+                            <input type="checkbox" id="rejectAllowReregister" checked>
+                            إضافة رسالة "يمكنك إعادة التسجيل بعد التعديل" في الرسالة
+                        </label>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-default" data-dismiss="modal">إلغاء</button>
-                <button type="button" class="btn btn-danger" onclick="confirmReject()">تأكيد الرفض</button>
+                <button type="button" class="btn btn-warning" onclick="confirmReject()" style="color: #fff;"><i class="fa-solid fa-rotate-left"></i> رفض مع طلب تعديل</button>
             </div>
         </div>
     </div>
@@ -1236,6 +1249,7 @@ function rejectRegistration(wasel) {
 function confirmReject() {
     var wasel = $('#rejectWasel').val();
     var reason = $('#rejectReason').val();
+    var allowReregister = $('#rejectAllowReregister').is(':checked') ? '1' : '0';
     
     $('#rejectModal').modal('hide');
     
@@ -1245,7 +1259,7 @@ function confirmReject() {
     $.ajax({
         url: 'approve_registration.php',
         type: 'POST',
-        data: { action: 'reject', wasel: wasel, reason: reason },
+        data: { action: 'reject', wasel: wasel, reason: reason, allow_reregister: allowReregister },
         dataType: 'json',
         success: function(response) {
             row.css('opacity', '1');

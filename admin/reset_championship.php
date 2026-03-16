@@ -106,12 +106,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             file_put_contents($archiveDir . $filename, json_encode($archiveData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
             
             // --- SYNC ALL APPROVED MEMBERS FROM DATA.JSON TO SQLITE (Data Preservation) ---
-            // Because we stopped auto-syncing during registration, this is the ONLY time
-            // new users become permanent members in the database.
             $currentDataFile = __DIR__ . '/data/data.json';
             if (file_exists($currentDataFile)) {
                 $cJson = json_decode(file_get_contents($currentDataFile), true) ?? [];
                 require_once dirname(__DIR__) . '/services/MemberService.php';
+                
+                // BATCH: Read members.json ONCE before the loop
+                $membersJsonPath = __DIR__ . '/data/members.json';
+                $membersLockFile = __DIR__ . '/data/members.lock';
+                $mjLockHandle = fopen($membersLockFile, 'w');
+                if ($mjLockHandle) {
+                    flock($mjLockHandle, LOCK_EX);
+                }
+                $mjTemp = file_exists($membersJsonPath) ? json_decode(file_get_contents($membersJsonPath), true) : [];
+                if (!is_array($mjTemp)) $mjTemp = [];
                 
                 foreach ($cJson as $m) {
                     // Only sync approved members
@@ -125,22 +133,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     
                     $name = $m['full_name'] ?? $m['name'] ?? 'Unknown';
                     $gov = $m['governorate'] ?? '';
-                    $code = $m['registration_code'] ?? '';
                     
-                    // Creates member and generates 6-hex code if not exists
+                    // Creates member and generates permanent_code if not exists
                     $member = MemberService::getOrCreateMember($cleanPhone, $name, $gov);
                     
-                    // Force the database to use their data.json registration_code as their permanent_code
-                    if (!empty($code) && ($member['permanent_code'] ?? '') !== $code) {
-                        $pdo->prepare("UPDATE members SET permanent_code = ? WHERE id = ?")->execute([$code, $member['id']]);
-                        $member['permanent_code'] = $code;
-                    }
-                    
-                    // NEW LOGIC: Store all images in members.json so they aren't lost when data.json is cleared!
-                    $membersJsonPath = __DIR__ . '/data/members.json';
-                    $mjTemp = file_exists($membersJsonPath) ? json_decode(file_get_contents($membersJsonPath), true) : [];
+                    // FIX: DO NOT overwrite permanent_code!
+                    // The permanent_code is a database-generated identity and must NEVER change.
+                    // Previously this line was: UPDATE members SET permanent_code = registration_code
+                    // This caused members.json key collisions and image mixing.
                     $regCodeToUpdate = $member['permanent_code'];
                     
+                    // Store all images in members.json so they aren't lost when data.json is cleared
                     if (!isset($mjTemp[$regCodeToUpdate])) {
                         $mjTemp[$regCodeToUpdate] = [];
                     }
@@ -159,20 +162,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                             }
                         }
                     }
-                    file_put_contents($membersJsonPath, json_encode($mjTemp, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
                     
-                    // Persist final car profile and photo from data.json into member's profile
+                    // Also sync member info to members.json
+                    $mjTemp[$regCodeToUpdate]['full_name'] = $name;
+                    $mjTemp[$regCodeToUpdate]['phone'] = $cleanPhone;
+                    $mjTemp[$regCodeToUpdate]['governorate'] = $gov;
+                    $mjTemp[$regCodeToUpdate]['car_type'] = $m['car_type'] ?? '';
+                    $mjTemp[$regCodeToUpdate]['car_year'] = $m['car_year'] ?? '';
+                    $mjTemp[$regCodeToUpdate]['car_color'] = $m['car_color'] ?? '';
+                    $mjTemp[$regCodeToUpdate]['engine_size'] = $m['engine_size'] ?? $m['engine'] ?? '';
+                    $mjTemp[$regCodeToUpdate]['plate_number'] = $m['plate_number'] ?? '';
+                    $mjTemp[$regCodeToUpdate]['plate_letter'] = $m['plate_letter'] ?? '';
+                    $mjTemp[$regCodeToUpdate]['plate_governorate'] = $m['plate_governorate'] ?? '';
+                    $mjTemp[$regCodeToUpdate]['participation_type'] = $m['participation_type'] ?? '';
+                    
+                    // Persist car profile and photos into member's permanent SQLite record
                     try {
-                        $pdo->prepare("UPDATE members SET last_car_type=?, last_car_year=?, last_car_color=?, last_plate_number=?, last_plate_letter=?, last_plate_governorate=?, last_engine_size=?, last_participation_type=?, personal_photo=? WHERE id=?")
+                        $pdo->prepare("UPDATE members SET last_car_type=?, last_car_year=?, last_car_color=?, last_plate_number=?, last_plate_letter=?, last_plate_governorate=?, last_engine_size=?, last_participation_type=?, personal_photo=?, national_id_front=?, national_id_back=? WHERE id=?")
                             ->execute([
                                 $m['car_type'] ?? '', $m['car_year'] ?? '', $m['car_color'] ?? '',
                                 $m['plate_number'] ?? '', $m['plate_letter'] ?? '', $m['plate_governorate'] ?? '',
                                 $m['engine_size'] ?? $m['engine'] ?? '',
                                 $m['participation_type'] ?? '',
                                 $m['personal_photo'] ?? $m['images']['personal_photo'] ?? '',
+                                $m['images']['id_front'] ?? $m['images']['national_id_front'] ?? $m['id_front'] ?? '',
+                                $m['images']['id_back'] ?? $m['images']['national_id_back'] ?? $m['id_back'] ?? '',
                                 $member['id']
                             ]);
-                    } catch(Exception $e) { /* columns may not exist */ }
+                    } catch(Exception $e) { /* columns may not exist yet */ }
                     
                     // Ensure they have a record in `registrations` table for historical stats
                     $champId = $settings['current_championship_id'] ?? date('Y') . '_default';
@@ -204,6 +221,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                             $m['championship_name'] ?? 'البطولة الحالية'
                         ]);
                     }
+                }
+                
+                // BATCH: Write members.json ONCE after the loop with file locking
+                file_put_contents($membersJsonPath, json_encode($mjTemp, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+                if ($mjLockHandle) {
+                    flock($mjLockHandle, LOCK_UN);
+                    fclose($mjLockHandle);
                 }
             }
 

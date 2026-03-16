@@ -336,16 +336,16 @@ $fieldSettings = getFormFieldsSettings();
       </div>
     </div>
 
+    <!-- Check Status Button (below rules) -->
+    <div style="text-align: center; margin: 20px 0 25px;">
+        <a href="check_status.php" class="btn" style="background: linear-gradient(135deg, #28a745, #218838); color: white; padding: 14px 35px; border-radius: 30px; font-weight: bold; font-size: 16px; box-shadow: 0 4px 15px rgba(40, 167, 69, 0.4); text-decoration: none; display: inline-flex; align-items: center; gap: 10px; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+            <i class="fa-solid fa-magnifying-glass"></i> تفقد حالة التسجيل الخاصة بك
+        </a>
+    </div>
+
     <!-- Registration Form -->
     <div class="form-container">
       <form name="registrationForm" method="post" enctype="multipart/form-data" onsubmit="submitForm(event)" id="mainForm">
-
-        <!-- Check Status Button -->
-        <div style="text-align: center; margin-bottom: 25px;">
-            <a href="check_status.php" class="btn" style="background: linear-gradient(135deg, #28a745, #218838); color: white; padding: 12px 30px; border-radius: 30px; font-weight: bold; font-size: 16px; box-shadow: 0 4px 15px rgba(40, 167, 69, 0.4); text-decoration: none; display: inline-flex; align-items: center; gap: 8px;">
-                <i class="fa-solid fa-magnifying-glass"></i> تفقد حالة التسجيل الخاصة بك
-            </a>
-        </div>
 
         <!-- Quick Registration Section -->
         <div class="form-section" style="background: linear-gradient(135deg, rgba(0,123,255,0.1), rgba(0,200,150,0.1)); border: 2px solid rgba(0,123,255,0.3);">

@@ -612,7 +612,7 @@ class WaSender {
         $messagesFile = dirname(__FILE__) . '/admin/data/whatsapp_messages.json';
         $supportNumber = $this->getSupportNumber();
         
-        $defaultMessage = "🏎️ *تسجيل سيارات الاستعراض الحر*\n━━━━━━━━━━━━━━━\n❌ *عذراً، لم يتم قبول طلبك*\n\n🔢 *رقم التسجيل:* {wasel}\n👤 *الاسم:* {name}\n📝 *السبب:* {reason}\n\n📞 للاستفسار: +{$supportNumber}\n━━━━━━━━━━━━━━━";
+        $defaultMessage = "🏎️ *تسجيل سيارات الاستعراض الحر*\n━━━━━━━━━━━━━━━\n🔄 *يرجى مراجعة وتعديل طلب التسجيل*\n\n🔢 *رقم التسجيل:* {wasel}\n👤 *الاسم:* {name}\n📝 *الملاحظات:* {reason}\n\n✏️ *يمكنك إعادة التسجيل بعد إجراء التعديلات المطلوبة*\n\n📞 للاستفسار: +{$supportNumber}\n━━━━━━━━━━━━━━━";
         
         if (file_exists($messagesFile)) {
             $messages = json_decode(file_get_contents($messagesFile), true);
