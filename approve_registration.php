@@ -118,6 +118,15 @@ try {
             $result = handleRejection($data, $registrationIndex, $registration, $reason);
             break;
             
+        case 'undo_reject':
+            $result = handleUndoRejection($data, $registrationIndex, $registration);
+            break;
+            
+        case 'edit_reject':
+            $reason = $_POST['reason'] ?? '';
+            $result = handleEditRejection($data, $registrationIndex, $registration, $reason);
+            break;
+            
         default:
             $result = ['success' => false, 'message' => 'إجراء غير صالح'];
     }
@@ -371,6 +380,92 @@ function handleRejection(&$data, $index, $registration, $reason) {
     return [
         'success' => true,
         'message' => 'تم رفض التسجيل',
+        'whatsapp' => $whatsappResult
+    ];
+}
+
+/**
+ * Handle Undo Rejection
+ */
+function handleUndoRejection(&$data, $index, $registration) {
+    // Update status back to pending
+    $data[$index]['status'] = 'pending';
+    unset($data[$index]['rejected_date']);
+    unset($data[$index]['rejected_by']);
+    unset($data[$index]['rejection_reason']);
+    
+    // Save to data.json
+    if (!saveData($data)) {
+        return ['success' => false, 'message' => 'فشل في حفظ ملف JSON'];
+    }
+    
+    // SYNC TO SQLITE (Crucial for dashboard visibility)
+    try {
+        MemberService::ensureSQLiteRecord($data[$index]);
+    } catch (\Throwable $e) {
+        error_log("UndoReject Sync Error: " . $e->getMessage());
+    }
+    
+    // Log action
+    try {
+        $rejUsername = 'admin';
+        if (isset($_SESSION['user'])) {
+            $u = $_SESSION['user'];
+            $rejUsername = is_object($u) ? ($u->username ?? 'admin') : ($u['username'] ?? 'admin');
+        }
+        $adminLogger = new AdminLogger();
+        $adminLogger->log('undo_reject', $rejUsername, 'تراجع عن رفض: ' . ($registration['full_name'] ?? 'غير معروف'), ['wasel' => $registration['wasel']]);
+        RegistrationActionLogger::log('pending', $data[$index], 'تم التراجع عن الرفض', $rejUsername);
+    } catch (Exception $e) {}
+    
+    return [
+        'success' => true,
+        'message' => 'تم إرجاع حالة التسجيل إلى (قيد المراجعة) بنجاح'
+    ];
+}
+
+/**
+ * Handle Edit Rejection Reason
+ */
+function handleEditRejection(&$data, $index, $registration, $newReason) {
+    // Update reason
+    $data[$index]['rejection_reason'] = $newReason;
+    $data[$index]['rejected_date'] = date('Y-m-d H:i:s');
+    
+    // Save to data.json
+    if (!saveData($data)) {
+        return ['success' => false, 'message' => 'فشل في حفظ البيانات'];
+    }
+
+    // SYNC TO SQLITE
+    try {
+        MemberService::ensureSQLiteRecord($data[$index]);
+    } catch (\Throwable $e) {}
+    
+    // Resend WhatsApp rejection message with new reason
+    $whatsappResult = ['success' => false];
+    try {
+        $wasender = new WaSender();
+        $whatsappResult = $wasender->sendRejection($registration, $newReason);
+    } catch (Exception $e) {
+        $whatsappResult = ['success' => false, 'error' => $e->getMessage()];
+    }
+    
+    // Log action
+    try {
+        $rejUsername = 'admin';
+        if (isset($_SESSION['user'])) {
+            $u = $_SESSION['user'];
+            $rejUsername = is_object($u) ? ($u->username ?? 'admin') : ($u['username'] ?? 'admin');
+        }
+        $adminLogger = new AdminLogger();
+        $adminLogger->log('edit_reject', $rejUsername, 'تعديل سبب الرفض: ' . ($registration['full_name'] ?? 'غير معروف'), ['wasel' => $registration['wasel'], 'reason' => $newReason]);
+        RegistrationActionLogger::log('rejected', $data[$index], 'تعديل السبب: ' . $newReason, $rejUsername);
+    } catch (Exception $e) {}
+    
+    return [
+        'success' => true,
+        'message' => 'تم تعديل سبب الرفض وإعادة إرسال الرسالة',
         'whatsapp' => $whatsappResult
     ];
 }

@@ -291,54 +291,64 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $stmtCode->execute([$mid]);
             $permCode = $stmtCode->fetchColumn() ?: '';
 
-            // Step 1: Find the image path from ALL sources
-            $currentPath = '';
+            // Step 1: Find the image path from ALL sources to ensure we delete physical files
+            $pathsToDelete = [];
             
             // Try SQLite first
             try {
                 if ($target === 'member') {
                     $stmt = $pdo->prepare("SELECT $dbKey FROM members WHERE id = ?");
                     $stmt->execute([$mid]);
-                    $currentPath = $stmt->fetchColumn() ?: '';
+                    $pathsToDelete[] = $stmt->fetchColumn();
                 } else {
                     $stmt = $pdo->prepare("SELECT $dbKey FROM registrations WHERE member_id = ? AND is_active = 1");
                     $stmt->execute([$mid]);
-                    $currentPath = $stmt->fetchColumn() ?: '';
+                    $pathsToDelete[] = $stmt->fetchColumn();
                 }
             } catch (Exception $e) {
                 error_log("[DELETE_PHOTO] SQLite SELECT failed (OK): " . $e->getMessage());
             }
 
             // Fallback: members.json
-            if (empty($currentPath) && $permCode) {
+            if ($permCode) {
                 $membersFile = __DIR__ . '/data/members.json';
                 if (file_exists($membersFile)) {
                     $mjData = json_decode(file_get_contents($membersFile), true) ?? [];
                     $memberRec = $mjData[$permCode] ?? [];
                     $images = $memberRec['images'] ?? [];
-                    $currentPath = $images[$key] ?? $images[$dbKey] ?? '';
+                    $pathsToDelete[] = $images[$key] ?? '';
+                    $pathsToDelete[] = $images[$dbKey] ?? '';
                 }
             }
 
             // Fallback: data.json
-            if (empty($currentPath) && $permCode) {
+            if ($permCode) {
                 $dataFile = __DIR__ . '/data/data.json';
                 if (file_exists($dataFile)) {
                     $djData = json_decode(file_get_contents($dataFile), true) ?? [];
                     foreach ($djData as $entry) {
                         if (isset($entry['registration_code']) && $entry['registration_code'] === $permCode) {
-                            $currentPath = $entry['images'][$key] ?? $entry['images'][$dbKey] ?? $entry[$key] ?? '';
+                            $pathsToDelete[] = $entry['images'][$key] ?? '';
+                            $pathsToDelete[] = $entry['images'][$dbKey] ?? '';
+                            $pathsToDelete[] = $entry[$key] ?? '';
                             break;
                         }
                     }
                 }
             }
 
-            // Step 2: Unlink physically
-            if (!empty($currentPath)) {
+            // Step 2: Unlink physically ALL found paths
+            $pathsToDelete = array_filter(array_unique($pathsToDelete)); // Remove empty & duplicates
+            error_log("[DELETE_PHOTO] Paths to delete: " . print_r($pathsToDelete, true));
+            
+            foreach ($pathsToDelete as $currentPath) {
                 $relPath = ltrim(str_replace('../', '', $currentPath), '/');
                 $fullPath = __DIR__ . '/../' . $relPath;
-                if (file_exists($fullPath)) @unlink($fullPath);
+                error_log("[DELETE_PHOTO] Checking physical path: " . $fullPath);
+                if (file_exists($fullPath) && is_file($fullPath)) {
+                    @unlink($fullPath);
+                    error_log("[DELETE_PHOTO] Physical file deleted: " . $fullPath);
+                }
             }
 
             // Step 3: Clear from SQLite (best effort)
@@ -348,23 +358,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 } else {
                     $pdo->prepare("UPDATE registrations SET $dbKey = NULL WHERE member_id = ? AND is_active = 1")->execute([$mid]);
                 }
+                error_log("[DELETE_PHOTO] SQLite cleared properly");
             } catch (Exception $e) {
                 error_log("[DELETE_PHOTO] SQLite UPDATE failed (OK): " . $e->getMessage());
             }
 
             // Step 4: CRITICAL - Clear from members.json directly
+            error_log("[DELETE_PHOTO] JSON Clear -> target Code: $permCode | key: $key | dbKey: $dbKey");
             if ($permCode) {
                 $membersFile = __DIR__ . '/data/members.json';
                 if (file_exists($membersFile)) {
                     $mjData = json_decode(file_get_contents($membersFile), true) ?? [];
                     if (isset($mjData[$permCode])) {
-                        if (isset($mjData[$permCode]['images'][$key])) {
-                            $mjData[$permCode]['images'][$key] = '';
+                        if (!isset($mjData[$permCode]['images'])) {
+                            $mjData[$permCode]['images'] = [];
                         }
-                        if ($key !== $dbKey && isset($mjData[$permCode]['images'][$dbKey])) {
+                        
+                        // Log before clear
+                        $beforeValMj1 = $mjData[$permCode]['images'][$key] ?? 'MISSING';
+                        $beforeValMj2 = $mjData[$permCode]['images'][$dbKey] ?? 'MISSING';
+                        error_log("[DELETE_PHOTO] MJ Before -> [$key]: $beforeValMj1 | [$dbKey]: $beforeValMj2");
+
+                        $mjData[$permCode]['images'][$key] = '';
+                        if ($key !== $dbKey) {
                             $mjData[$permCode]['images'][$dbKey] = '';
                         }
                         file_put_contents($membersFile, json_encode($mjData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+                        error_log("[DELETE_PHOTO] members.json saved.");
+                    } else {
+                        error_log("[DELETE_PHOTO] Code $permCode NOT FOUND in members.json");
                     }
                 }
             }
@@ -376,20 +398,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $djData = json_decode(file_get_contents($dataFile), true) ?? [];
                     foreach ($djData as &$entry) {
                         if (isset($entry['registration_code']) && $entry['registration_code'] === $permCode) {
-                            if (isset($entry['images'][$key])) $entry['images'][$key] = '';
-                            if ($key !== $dbKey && isset($entry['images'][$dbKey])) $entry['images'][$dbKey] = '';
-                            if (isset($entry[$key])) $entry[$key] = '';
+                            if (!isset($entry['images'])) {
+                                $entry['images'] = [];
+                            }
+                            
+                            $beforeValDj1 = $entry['images'][$key] ?? 'MISSING';
+                            $beforeValDj2 = $entry['images'][$dbKey] ?? 'MISSING';
+                            $beforeValDj3 = $entry[$key] ?? 'MISSING';
+                            error_log("[DELETE_PHOTO] DJ Before -> [$key]: $beforeValDj1 | [$dbKey]: $beforeValDj2 | ROOT: $beforeValDj3");
+
+                            $entry['images'][$key] = '';
+                            if ($key !== $dbKey) {
+                                $entry['images'][$dbKey] = '';
+                            }
+                            $entry[$key] = ''; // Also clear root key if it exists
                             break;
                         }
                     }
                     unset($entry);
                     file_put_contents($dataFile, json_encode($djData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+                    error_log("[DELETE_PHOTO] data.json saved.");
                 }
             }
 
             // Step 6: Sync
             MemberService::syncToJson($mid);
             auditLog('delete_image', $target, $mid, null, $key, $currentUser->id ?? null);
+            error_log("[DELETE_PHOTO] Success. Returning response.");
             $response = ['success' => true, 'message' => 'تم الحذف بنجاح'];
         }
 

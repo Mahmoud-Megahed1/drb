@@ -92,8 +92,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             // Disable Foreign Keys during critical reset phase to prevent constraint violations
             $pdo->exec("PRAGMA foreign_keys = OFF");
             
-            // 1. Snapshot Current Data
-            $stmt = $pdo->query("SELECT r.*, m.name as member_name, m.phone FROM registrations r JOIN members m ON r.member_id = m.id");
+            // 1. Snapshot Current Data (Include Pending and Approved)
+            $stmt = $pdo->query("SELECT r.*, m.name as member_name, m.phone FROM registrations r JOIN members m ON r.member_id = m.id WHERE r.is_active = 1");
             $regData = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             $filename = 'championship_' . date('Y-m-d_H-i-s') . '.json';
@@ -105,7 +105,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
             file_put_contents($archiveDir . $filename, json_encode($archiveData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
             
-            // --- SYNC ALL APPROVED MEMBERS FROM DATA.JSON TO SQLITE (Data Preservation) ---
+            // --- SYNC ALL MEMBERS FROM DATA.JSON TO SQLITE (Data & Image Preservation) ---
+            // Even if they are pending, we must preserve their images and data into their permanent profile.
             $currentDataFile = __DIR__ . '/data/data.json';
             if (file_exists($currentDataFile)) {
                 $cJson = json_decode(file_get_contents($currentDataFile), true) ?? [];
@@ -122,8 +123,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 if (!is_array($mjTemp)) $mjTemp = [];
                 
                 foreach ($cJson as $m) {
-                    // Only sync approved members
-                    if (($m['status'] ?? '') !== 'approved') continue;
+                    // Include EVERYTHING (approved, pending, rejected) so their images aren't lost
+                    // REMOVED: if (!in_array(($m['status'] ?? ''), ['approved', 'pending'])) continue;
                     
                     $phone = $m['phone'] ?? '';
                     if (empty($phone)) continue;
@@ -139,8 +140,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     
                     // FIX: DO NOT overwrite permanent_code!
                     // The permanent_code is a database-generated identity and must NEVER change.
-                    // Previously this line was: UPDATE members SET permanent_code = registration_code
-                    // This caused members.json key collisions and image mixing.
                     $regCodeToUpdate = $member['permanent_code'];
                     
                     // Store all images in members.json so they aren't lost when data.json is cleared
@@ -334,7 +333,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 }
 
 // Stats
-$total = $pdo->query("SELECT COUNT(*) FROM registrations")->fetchColumn();
+$total = 0;
+if (file_exists($dataFile)) {
+    $cJson = json_decode(file_get_contents($dataFile), true);
+    if (is_array($cJson)) {
+        $total = count($cJson);
+    }
+}
 
 // Archives List (Optimized)
 $archives = [];

@@ -688,6 +688,7 @@ class MemberService {
         }
 
         // Determine merged source values
+        // Extract latest known values from history
         $latestReg = $registrations[0] ?? null;
         
         $uType = $foundData['car_type'] ?? $latestReg['car_type'] ?? $member['last_car_type'] ?? '';
@@ -699,16 +700,32 @@ class MemberService {
         $uPlateLet = $foundData['plate_letter'] ?? $latestReg['plate_letter'] ?? $member['last_plate_letter'] ?? '';
         $uPlateNum = $foundData['plate_number'] ?? $latestReg['plate_number'] ?? $member['last_plate_number'] ?? '';
         
-        $uPhoto = $foundData['personal_photo'] ?? ($foundData['images']['personal_photo'] ?? '') ?: ($latestReg['personal_photo'] ?? '') ?: ($latestReg['images']['personal_photo'] ?? '') ?: ($member['personal_photo'] ?? '');
-        $uFront = $foundData['front_image'] ?? ($foundData['images']['front_image'] ?? '') ?: ($latestReg['front_image'] ?? '') ?: ($latestReg['images']['front_image'] ?? '');
-        $uSide = $foundData['side_image'] ?? ($foundData['images']['side_image'] ?? '') ?: ($latestReg['side_image'] ?? '') ?: ($latestReg['images']['side_image'] ?? '');
-        $uBack = $foundData['back_image'] ?? ($foundData['images']['back_image'] ?? '') ?: ($latestReg['back_image'] ?? '') ?: ($latestReg['images']['back_image'] ?? '');
-        $uEdited = $foundData['edited_image'] ?? ($foundData['images']['edited_image'] ?? '') ?: ($latestReg['edited_image'] ?? '') ?: ($latestReg['images']['edited_image'] ?? '');
-        $uAccept = $foundData['acceptance_image'] ?? ($foundData['images']['acceptance_image'] ?? '') ?: ($latestReg['acceptance_image'] ?? '') ?: ($latestReg['images']['acceptance_image'] ?? '');
-        $uIdFront = ($foundData['national_id_front'] ?? '') ?: ($foundData['images']['national_id_front'] ?? '') ?: ($foundData['id_front'] ?? '') ?: ($foundData['images']['id_front'] ?? '') ?: ($latestReg['national_id_front'] ?? '') ?: ($latestReg['images']['national_id_front'] ?? '') ?: ($latestReg['id_front'] ?? '') ?: ($latestReg['images']['id_front'] ?? '') ?: ($member['national_id_front'] ?? '');
-        $uIdBack = ($foundData['national_id_back'] ?? '') ?: ($foundData['images']['national_id_back'] ?? '') ?: ($foundData['id_back'] ?? '') ?: ($foundData['images']['id_back'] ?? '') ?: ($latestReg['national_id_back'] ?? '') ?: ($latestReg['images']['national_id_back'] ?? '') ?: ($latestReg['id_back'] ?? '') ?: ($latestReg['images']['id_back'] ?? '') ?: ($member['national_id_back'] ?? '');
-        $uLicenseFront = ($foundData['license_front'] ?? '') ?: ($foundData['images']['license_front'] ?? '') ?: ($latestReg['images']['license_front'] ?? '');
-        $uLicenseBack = ($foundData['license_back'] ?? '') ?: ($foundData['images']['license_back'] ?? '') ?: ($latestReg['images']['license_back'] ?? '');
+        // --- IMPROVEMENT: Search complete history for the first available image ---
+        // Instead of just relying on $latestReg (which might be pending and empty), we search the entire history.
+        $uPhoto = $foundData['personal_photo'] ?? ($foundData['images']['personal_photo'] ?? '') ?: ($member['personal_photo'] ?? '');
+        $uFront = $foundData['front_image'] ?? ($foundData['images']['front_image'] ?? '');
+        $uSide = $foundData['side_image'] ?? ($foundData['images']['side_image'] ?? '');
+        $uBack = $foundData['back_image'] ?? ($foundData['images']['back_image'] ?? '');
+        $uEdited = $foundData['edited_image'] ?? ($foundData['images']['edited_image'] ?? '');
+        $uAccept = $foundData['acceptance_image'] ?? ($foundData['images']['acceptance_image'] ?? '');
+        $uIdFront = ($foundData['national_id_front'] ?? '') ?: ($foundData['images']['national_id_front'] ?? '') ?: ($foundData['id_front'] ?? '') ?: ($foundData['images']['id_front'] ?? '') ?: ($member['national_id_front'] ?? '');
+        $uIdBack = ($foundData['national_id_back'] ?? '') ?: ($foundData['images']['national_id_back'] ?? '') ?: ($foundData['id_back'] ?? '') ?: ($foundData['images']['id_back'] ?? '') ?: ($member['national_id_back'] ?? '');
+        $uLicenseFront = ($foundData['license_front'] ?? '') ?: ($foundData['images']['license_front'] ?? '');
+        $uLicenseBack = ($foundData['license_back'] ?? '') ?: ($foundData['images']['license_back'] ?? '');
+
+        // Fallback to registrations history
+        foreach ($registrations as $r) {
+            if (empty($uPhoto)) $uPhoto = ($r['personal_photo'] ?? '') ?: ($r['images']['personal_photo'] ?? '');
+            if (empty($uFront)) $uFront = ($r['front_image'] ?? '') ?: ($r['images']['front_image'] ?? '');
+            if (empty($uSide)) $uSide = ($r['side_image'] ?? '') ?: ($r['images']['side_image'] ?? '');
+            if (empty($uBack)) $uBack = ($r['back_image'] ?? '') ?: ($r['images']['back_image'] ?? '');
+            if (empty($uEdited)) $uEdited = ($r['edited_image'] ?? '') ?: ($r['images']['edited_image'] ?? '');
+            if (empty($uAccept)) $uAccept = ($r['acceptance_image'] ?? '') ?: ($r['images']['acceptance_image'] ?? '');
+            if (empty($uIdFront)) $uIdFront = ($r['national_id_front'] ?? '') ?: ($r['images']['national_id_front'] ?? '') ?: ($r['id_front'] ?? '') ?: ($r['images']['id_front'] ?? '');
+            if (empty($uIdBack)) $uIdBack = ($r['national_id_back'] ?? '') ?: ($r['images']['national_id_back'] ?? '') ?: ($r['id_back'] ?? '') ?: ($r['images']['id_back'] ?? '');
+            if (empty($uLicenseFront)) $uLicenseFront = ($r['license_front'] ?? '') ?: ($r['images']['license_front'] ?? '');
+            if (empty($uLicenseBack)) $uLicenseBack = ($r['license_back'] ?? '') ?: ($r['images']['license_back'] ?? '');
+        }
 
         // Removed dangerous Dynamic Directory Scan - Only trust DB/JSON mapped paths
 

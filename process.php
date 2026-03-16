@@ -802,7 +802,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["action"]) && $_POST["
                     last_plate_letter = ?,
                     last_plate_number = ?,
                     last_plate_governorate = ?,
-                    last_participation_type = ?
+                    last_participation_type = ?,
+                    license_front = COALESCE(NULLIF(license_front, ''), ?),
+                    license_back = COALESCE(NULLIF(license_back, ''), ?)
                 WHERE id = ?
             ")->execute([
                 $registrationCode,
@@ -820,6 +822,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["action"]) && $_POST["
                 html_entity_decode($newData['plate_number'], ENT_QUOTES, 'UTF-8'),
                 html_entity_decode($newData['plate_governorate'], ENT_QUOTES, 'UTF-8'),
                 html_entity_decode($newData['participation_type'], ENT_QUOTES, 'UTF-8'),
+                $imagePaths['license_front'] ?? '',
+                $imagePaths['license_back'] ?? '',
                 $memberId
             ]);
             
@@ -843,8 +847,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["action"]) && $_POST["
                         car_type, car_year, car_color, engine_size, participation_type,
                         plate_number, plate_letter, plate_governorate,
                         personal_photo, front_image, side_image, back_image, edited_image,
+                        license_front, license_back,
                         session_badge_token, championship_name, created_at, is_active
-                    ) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', '+3 hours'), 1)
+                    ) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', '+3 hours'), 1)
                 ")->execute([
                     $memberId, $champId, $wasel,
                     html_entity_decode($newData['car_type'], ENT_QUOTES, 'UTF-8'),

@@ -141,7 +141,7 @@ $currentPage = 'pending_messages';
             <i class="fa-solid fa-rotate"></i> إعادة إرسال الكل
         </button>
         <button class="btn btn-warning" onclick="clearSent()" id="clearSentBtn">
-            <i class="fa-solid fa-broom"></i> مسح المرسلة
+            <i class="fa-solid fa-broom"></i> مسح المرسلة والفاشلة
         </button>
     </div>
 
@@ -361,26 +361,38 @@ async function removeMsg(id) {
     if (!confirm('حذف هذه الرسالة من الطابور؟')) return;
     
     try {
-        await fetch('../api/whatsapp_health.php?action=remove', {
+        const res = await fetch('../api/whatsapp_health.php?action=remove', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: `message_id=${id}`
         });
-        document.getElementById(`msg_${id}`)?.remove();
-        refreshStatus();
+        const data = await res.json();
+        if (data.success) {
+            document.getElementById(`msg_${id}`)?.remove();
+            refreshStatus();
+            alert('تم الحذف بنجاح');
+        } else {
+            alert('خطأ: ' + (data.error || 'غير معروف'));
+        }
     } catch (e) {
-        alert('خطأ');
+        alert('خطأ في الاتصال: ' + e.message);
     }
 }
 
 async function clearSent() {
-    if (!confirm('مسح جميع الرسائل التي تم إرسالها بنجاح؟')) return;
+    if (!confirm('مسح جميع الرسائل التي تم إرسالها بنجاح أو فشلت نهائياً؟')) return;
     
     try {
-        await fetch('../api/whatsapp_health.php?action=clear_sent', { method: 'POST' });
-        loadMessages();
+        const res = await fetch('../api/whatsapp_health.php?action=clear_sent', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+            alert('تم المسح بنجاح');
+            loadMessages();
+        } else {
+            alert('خطأ: ' + (data.error || 'غير معروف'));
+        }
     } catch (e) {
-        alert('خطأ');
+        alert('خطأ في الاتصال: ' + e.message);
     }
 }
 

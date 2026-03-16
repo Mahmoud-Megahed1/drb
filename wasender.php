@@ -1181,7 +1181,8 @@ class WaSender {
      */
     public function clearSentMessages() {
         $queue = $this->loadQueue();
-        $queue = array_filter($queue, fn($m) => ($m['status'] ?? '') !== 'sent');
+        // Remove both successfully sent and permanently failed messages
+        $queue = array_filter($queue, fn($m) => !in_array(($m['status'] ?? ''), ['sent', 'failed_permanent']));
         $this->saveQueue(array_values($queue));
         return true;
     }

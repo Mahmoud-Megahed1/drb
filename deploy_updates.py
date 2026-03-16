@@ -18,10 +18,12 @@ files_to_upload = [
     "add_note.php",
     "admin/generate_acceptance.php",
     "admin/view_notes.php",
+    "admin/pending_messages.php",
     "database/schema.sql",
     "include/db.php",
     "index.php",
-    "wasender.php"
+    "wasender.php",
+    "super_clean.php"
 ]
 
 def ensure_remote_dir(ftp, remote_path):

@@ -749,6 +749,13 @@ if (empty($participationLabels)) {
                                         ?>
                                     </ul>
                                 </div>
+                                <?php elseif ($status === 'rejected' && $canApprove): ?>
+                                    <button class="btn btn-warning btn-sm" style="margin-bottom: 3px;" onclick="undoRejection('<?= $input['wasel'] ?>')">
+                                        ↩️ تراجع عن الرفض
+                                    </button>
+                                    <button class="btn btn-info btn-sm" style="margin-bottom: 3px;" onclick="editRejectionReason('<?= $input['wasel'] ?>', '<?= htmlspecialchars(addslashes($input['rejection_reason'] ?? '')) ?>')">
+                                        📝 تعديل سبب الرفض
+                                    </button>
                                 <?php endif; ?>
                                 
                                 <?php if ($canDelete): ?>
@@ -1301,6 +1308,59 @@ function resendMessage(wasel) {
     });
 }
 
+// Undo Rejection
+function undoRejection(wasel) {
+    if (!confirm('هل أنت متأكد من التراجع عن رفض هذا المشترك وإعادته لحالة قيد المراجعة؟')) return;
+    
+    var row = $('#row_' + wasel);
+    row.css('opacity', '0.5');
+    
+    $.ajax({
+        url: 'approve_registration.php',
+        type: 'POST',
+        data: { action: 'undo_reject', wasel: wasel },
+        dataType: 'json',
+        success: function(response) {
+            row.css('opacity', '1');
+            if (response.success) {
+                // Refresh for undo to restore all complex pending buttons easily
+                location.reload(); 
+            } else {
+                showToast('❌ ' + (response.message || 'حدث خطأ'), 'error');
+            }
+        },
+        error: function(xhr) {
+            row.css('opacity', '1');
+            showToast('❌ حدث خطأ في الاتصال', 'error');
+        }
+    });
+}
+
+// Edit Rejection Reason
+function editRejectionReason(wasel, currentReason) {
+    var newReason = prompt('تعديل سبب الرفض (سيتم إرسال رسالة واتساب جديدة):', currentReason);
+    if (newReason === null || newReason === currentReason) return;
+    
+    $.ajax({
+        url: 'approve_registration.php',
+        type: 'POST',
+        data: { action: 'edit_reject', wasel: wasel, reason: newReason },
+        dataType: 'json',
+        success: function(response) {
+            if (response.success) {
+                showToast('✅ ' + response.message, 'success');
+                // Refresh to update the onclick attribute with the new reason
+                setTimeout(function(){ location.reload(); }, 1500);
+            } else {
+                showToast('❌ ' + (response.message || 'حدث خطأ'), 'error');
+            }
+        },
+        error: function(xhr) {
+            showToast('❌ حدث خطأ في الاتصال', 'error');
+        }
+    });
+}
+
 function deleteRegistration(wasel) {
     if (!confirm('⚠️ هل أنت متأكد من حذف هذا التسجيل نهائياً؟\n\nلا يمكن التراجع عن هذا الإجراء!')) return;
     
@@ -1562,7 +1622,10 @@ function updateRowStatus(row, wasel, newStatus) {
     } else if (newStatus === 'rejected') {
         actionsCell.html(
             '<div class="btn-group-vertical btn-group-sm">' +
-            '<span class="label label-danger" style="font-size:13px;">تم الرفض</span>' +
+            '<button class="btn btn-warning btn-sm" style="margin-bottom: 3px;" onclick="undoRejection(\'' + wasel + '\')">' +
+            '↩️ تراجع عن الرفض</button>' +
+            '<button class="btn btn-info btn-sm" style="margin-bottom: 3px;" onclick="editRejectionReason(\'' + wasel + '\', \'\')">' +
+            '📝 تعديل سبب الرفض</button>' +
             <?php if ($canDelete): ?>
             '<button class="btn btn-danger btn-sm" onclick="deleteRegistration(\'' + wasel + '\')" style="margin-top:5px;">🗑️ حذف</button>' +
             <?php endif; ?>
