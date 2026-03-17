@@ -54,6 +54,10 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 $action = $_POST['action'] ?? '';
 $wasel = $_POST['wasel'] ?? '';
 
+// DEBUG: Log received action for troubleshooting
+$debugFile = __DIR__ . '/admin/data/action_debug.log';
+file_put_contents($debugFile, date('[Y-m-d H:i:s] ') . "ACTION='$action' WASEL='$wasel' POST=" . json_encode($_POST) . "\n", FILE_APPEND);
+
 if (empty($wasel)) {
     echo json_encode(['success' => false, 'message' => 'رقم التسجيل مفقود']);
     exit;
@@ -119,10 +123,12 @@ try {
             break;
             
         case 'undo_reject':
+        case 'undoreject':
             $result = handleUndoRejection($data, $registrationIndex, $registration);
             break;
             
         case 'edit_reject':
+        case 'editreject':
             $reason = $_POST['reason'] ?? '';
             $result = handleEditRejection($data, $registrationIndex, $registration, $reason);
             break;
@@ -136,8 +142,45 @@ try {
     $result = ['success' => false, 'message' => 'خطأ فادح: ' . $e->getMessage(), 'file' => $e->getFile(), 'line' => $e->getLine()];
 }
 
-// *** SEND RESPONSE AND EXIT IMMEDIATELY ***
-echo json_encode($result);
+// *** SEND RESPONSE FIRST, THEN DO BACKGROUND WORK ***
+$jsonResponse = json_encode($result);
+
+// Close HTTP connection (browser gets response immediately)
+if (function_exists('fastcgi_finish_request')) {
+    echo $jsonResponse;
+    fastcgi_finish_request();
+} else {
+    ignore_user_abort(true);
+    if (ob_get_level() > 0) ob_end_clean();
+    header("Connection: close");
+    header("Content-Type: application/json; charset=utf-8");
+    ob_start();
+    echo $jsonResponse;
+    $size = ob_get_length();
+    header("Content-Length: $size");
+    ob_end_flush();
+    @ob_flush();
+    flush();
+}
+
+// *** BACKGROUND: Process approval WhatsApp messages AFTER response ***
+if ($approvalContext !== null) {
+    try {
+        // Re-read data in case it was updated
+        $bgData = json_decode(file_get_contents($dataFile), true);
+        if (is_array($bgData)) {
+            processApprovalBackground(
+                $bgData,
+                $approvalContext['index'],
+                $bgData[$approvalContext['index']] ?? $approvalContext['registration'],
+                $approvalContext['messageOptions']
+            );
+        }
+    } catch (\Throwable $e) {
+        $debugFile = __DIR__ . '/admin/data/approval_trace.log';
+        file_put_contents($debugFile, date('[H:i:s] ') . "BG ERROR: " . $e->getMessage() . "\n", FILE_APPEND);
+    }
+}
 exit;
 
 /**
@@ -296,8 +339,8 @@ function processApprovalBackground(&$data, $index, $registration, $messageOption
                 [$registration['full_name'] ?? '', $registration['wasel'] ?? '', $registration['car_type'] ?? '', $registration['plate_full'] ?? '', $registration['registration_code'] ?? ''],
                 $acceptCaption);
             $acceptCaption .= "\n\n🌐 *رابط بطاقة القبول:* \n" . $acceptanceLink;
-            $waSender->sendMessage($registration['phone'], $acceptCaption, $registration['country_code'] ?? '+964');
-            $processLog[] = 'Accept: Queued';
+            $acceptResult = $waSender->sendMessage($registration['phone'], $acceptCaption, $registration['country_code'] ?? '+964');
+            $processLog[] = ($acceptResult['success'] ?? false) ? 'Accept: Queued' : 'Accept: FAILED - ' . ($acceptResult['error'] ?? 'unknown');
         }
         
         if ($sendBadge) {
@@ -312,8 +355,8 @@ function processApprovalBackground(&$data, $index, $registration, $messageOption
                 $badgeCaption);
             $badgeCaption .= "\n\n📥 *افتح الباج الكامل:*\n" . $badgeLink;
             
-            $waSender->sendImage($registration['phone'], $qrCodeUrl, $badgeCaption, $registration['country_code'] ?? '+964');
-            $processLog[] = 'Badge: Queued';
+            $badgeResult = $waSender->sendImage($registration['phone'], $qrCodeUrl, $badgeCaption, $registration['country_code'] ?? '+964');
+            $processLog[] = ($badgeResult['success'] ?? false) ? 'Badge: Queued' : 'Badge: FAILED - ' . ($badgeResult['error'] ?? 'unknown');
         }
     } catch (\Throwable $e) {
         $processLog[] = 'WA: ' . $e->getMessage();

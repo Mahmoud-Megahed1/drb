@@ -23,7 +23,8 @@ files_to_upload = [
     "include/db.php",
     "index.php",
     "wasender.php",
-    "super_clean.php"
+    "super_clean.php",
+    "approve_registration.php"
 ]
 
 def ensure_remote_dir(ftp, remote_path):

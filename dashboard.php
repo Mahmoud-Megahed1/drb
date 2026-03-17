@@ -1318,7 +1318,7 @@ function undoRejection(wasel) {
     $.ajax({
         url: 'approve_registration.php',
         type: 'POST',
-        data: { action: 'undo_reject', wasel: wasel },
+        data: { action: 'undoreject', wasel: wasel },
         dataType: 'json',
         success: function(response) {
             row.css('opacity', '1');
@@ -1344,7 +1344,7 @@ function editRejectionReason(wasel, currentReason) {
     $.ajax({
         url: 'approve_registration.php',
         type: 'POST',
-        data: { action: 'edit_reject', wasel: wasel, reason: newReason },
+        data: { action: 'editreject', wasel: wasel, reason: newReason },
         dataType: 'json',
         success: function(response) {
             if (response.success) {

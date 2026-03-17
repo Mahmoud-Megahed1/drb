@@ -28,7 +28,9 @@ $messageType = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['clear_all_logs']) && $isRoot) {
     try {
         $pdo = \db();
-        $pdo->exec("DELETE FROM whatsapp_logs");
+        // Try new table first, then legacy table
+        try { $pdo->exec("DELETE FROM messages"); } catch (\Exception $e) {}
+        try { $pdo->exec("DELETE FROM whatsapp_logs"); } catch (\Exception $e) {}
         $dataDir = __DIR__ . '/data';
         @file_put_contents($dataDir . '/whatsapp_log.json', json_encode([], JSON_PRETTY_PRINT));
         @file_put_contents($dataDir . '/whatsapp_failed_queue.json', json_encode([], JSON_PRETTY_PRINT));
