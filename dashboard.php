@@ -199,6 +199,7 @@ if (empty($participationLabels)) {
             border-radius: 5px; 
             cursor: pointer;
             transition: transform 0.2s;
+            background: #f0f0f0;
         }
         .image-thumb:hover { transform: scale(1.1); }
         
@@ -669,8 +670,7 @@ if (empty($participationLabels)) {
                                     if (!empty($path)) {
                                         $cleanPath = ltrim($path, './');
                                     ?>
-                                    <img src="<?= $cleanPath ?>" class="image-thumb" 
-                                         loading="lazy"
+                                    <img data-src="thumb.php?src=<?= urlencode($cleanPath) ?>&w=100&h=100" class="image-thumb lazy-img" 
                                          onclick="showImage('<?= $cleanPath ?>', '<?= $type ?>')"
                                          title="<?= $type ?>"
                                          onerror="this.style.display='none'">
@@ -749,6 +749,9 @@ if (empty($participationLabels)) {
                                         ?>
                                     </ul>
                                 </div>
+                                <button class="btn btn-danger btn-sm" style="margin-top: 3px; width: 100%;" onclick="rejectRegistration('<?= $input['wasel'] ?>')">
+                                    🚫 تراجع عن القبول (رفض)
+                                </button>
                                 <?php elseif ($status === 'rejected' && $canApprove): ?>
                                     <button class="btn btn-warning btn-sm" style="margin-bottom: 3px;" onclick="undoRejection('<?= $input['wasel'] ?>')">
                                         ↩️ تراجع عن الرفض
@@ -1062,11 +1065,12 @@ if (empty($participationLabels)) {
 $.fn.dataTable.ext.errMode = 'none';
 
 $(document).ready(function() {
-    $('#dataTable').DataTable({
+    var dt = $('#dataTable').DataTable({
         paging: true,
         ordering: true,
         order: [[0, 'desc']],
-        pageLength: 25,
+        pageLength: 15,
+        deferRender: true,
         language: {
             lengthMenu: "عرض _MENU_ سجلات",
             zeroRecords: "لا توجد بيانات",
@@ -1075,8 +1079,39 @@ $(document).ready(function() {
             infoFiltered: "(تم تصفيتها من _MAX_)",
             search: "بحث:",
             paginate: { first: "الأول", last: "الأخير", next: "التالي", previous: "السابق" }
+        },
+        drawCallback: function() {
+            // Lazy load images only when they appear on the current page
+            lazyLoadImages();
         }
     });
+
+    // Intersection Observer for true lazy loading
+    function lazyLoadImages() {
+        var imgs = document.querySelectorAll('img.lazy-img[data-src]');
+        if ('IntersectionObserver' in window) {
+            var observer = new IntersectionObserver(function(entries) {
+                entries.forEach(function(entry) {
+                    if (entry.isIntersecting) {
+                        var img = entry.target;
+                        img.src = img.getAttribute('data-src');
+                        img.removeAttribute('data-src');
+                        img.classList.remove('lazy-img');
+                        observer.unobserve(img);
+                    }
+                });
+            }, { rootMargin: '100px' });
+            imgs.forEach(function(img) { observer.observe(img); });
+        } else {
+            // Fallback: load all visible images
+            imgs.forEach(function(img) {
+                img.src = img.getAttribute('data-src');
+                img.removeAttribute('data-src');
+            });
+        }
+    }
+    // Initial lazy load
+    lazyLoadImages();
     
     // Settings forms
     $('#bannerForm, #frameForm').on('submit', function(e) {

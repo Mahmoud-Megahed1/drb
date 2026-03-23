@@ -246,12 +246,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["action"]) && $_POST["
     if (file_exists($blacklistFile)) {
         $blacklist = json_decode(file_get_contents($blacklistFile), true) ?? ['phones' => [], 'plates' => []];
         
-        // Check Phone
-        $phoneToCheck = str_replace([' ', '-'], '', $_POST['phone']);
-        foreach ($blacklist['phones'] ?? [] as $bPhone) {
-            if (!empty($bPhone) && strpos($phoneToCheck, $bPhone) !== false) {
+        // Check Phone — normalize BOTH sides to same format for reliable matching
+        $phoneToCheck = str_replace([' ', '-', '+'], '', $_POST['phone']);
+        // Also get the last 10 digits as the canonical form
+        $phoneLast10 = substr(preg_replace('/\D/', '', $_POST['phone']), -10);
+        
+        foreach ($blacklist['phones'] ?? [] as $bEntry) {
+            $bPhone = is_array($bEntry) ? ($bEntry['value'] ?? '') : (string)$bEntry;
+            $bReason = is_array($bEntry) ? ($bEntry['reason'] ?? '') : '';
+            if (empty($bPhone)) continue;
+            
+            // Normalize the blacklisted phone too
+            $bPhoneClean = preg_replace('/\D/', '', $bPhone); // strip non-digits
+            if (str_starts_with($bPhoneClean, '964')) $bPhoneClean = substr($bPhoneClean, 3);
+            if (strlen($bPhoneClean) == 11 && str_starts_with($bPhoneClean, '0')) $bPhoneClean = substr($bPhoneClean, 1);
+            $bPhoneLast10 = substr($bPhoneClean, -10);
+            
+            // Match: exact last-10-digits comparison OR substring match
+            if ($phoneLast10 === $bPhoneLast10 || 
+                strpos($phoneToCheck, $bPhoneClean) !== false || 
+                strpos($bPhoneClean, $phoneToCheck) !== false) {
+                 $reasonMsg = !empty($bReason) ? "<br>السبب: <strong>{$bReason}</strong>" : '';
                  http_response_code(400);
-                 echo "عذراً، لا يمكن إتمام التسجيل.<br>يرجى مراجعة الإدارة: <a href='https://wa.me/" . ($settings['support_number'] ?? '9647736000096') . "' target='_blank' style='color:#fff;text-decoration:underline;'>تواصل معنا عبر الواتساب</a>";
+                 echo "🚫 عذراً، أنت محظور من التسجيل.{$reasonMsg}<br>يرجى مراجعة الإدارة: <a href='https://wa.me/" . ($settings['support_number'] ?? '9647736000096') . "' target='_blank' style='color:#fff;text-decoration:underline;'>تواصل معنا عبر الواتساب</a>";
                  exit;
              }
         }
@@ -262,20 +279,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["action"]) && $_POST["
         $plateGov = trim($_POST['plate_governorate'] ?? '');
         
         // Construct common formats for checking
-        $plateFull1 = $plateGov . ' ' . $plateLetter . ' ' . $plateNumber; // Baghdad A 123456
-        $plateFull2 = $plateLetter . ' ' . $plateNumber . ' ' . $plateGov; // A 123456 Baghdad
-        $plateFull3 = $plateLetter . ' ' . $plateNumber; // A 123456
+        $plateFull1 = $plateGov . ' ' . $plateLetter . ' ' . $plateNumber;
+        $plateFull2 = $plateLetter . ' ' . $plateNumber . ' ' . $plateGov;
+        $plateFull3 = $plateLetter . ' ' . $plateNumber;
         
-        foreach ($blacklist['plates'] ?? [] as $bPlate) {
+        foreach ($blacklist['plates'] ?? [] as $bEntry) {
+            $bPlate = is_array($bEntry) ? ($bEntry['value'] ?? '') : (string)$bEntry;
+            $bReason = is_array($bEntry) ? ($bEntry['reason'] ?? '') : '';
             if (!empty($bPlate)) {
                 $bPlate = trim($bPlate);
-                // Check against number ONLY or Full String
                 if ($bPlate === $plateNumber || 
                     strpos($plateFull1, $bPlate) !== false || 
                     strpos($plateFull2, $bPlate) !== false ||
                     strpos($plateFull3, $bPlate) !== false) {
+                     $reasonMsg = !empty($bReason) ? "<br>السبب: <strong>{$bReason}</strong>" : '';
                      http_response_code(400);
-                     echo "عذراً، هذه المركبة محظورة من التسجيل.<br>يرجى مراجعة الإدارة: <a href='https://wa.me/" . ($settings['support_number'] ?? '9647736000096') . "' target='_blank' style='color:#fff;text-decoration:underline;'>تواصل معنا عبر الواتساب</a>";
+                     echo "🚫 عذراً، هذه المركبة محظورة من التسجيل.{$reasonMsg}<br>يرجى مراجعة الإدارة: <a href='https://wa.me/" . ($settings['support_number'] ?? '9647736000096') . "' target='_blank' style='color:#fff;text-decoration:underline;'>تواصل معنا عبر الواتساب</a>";
                      exit;
                 }
             }

@@ -14,7 +14,7 @@ define('PERMISSIONS', [
     'admin'  => ['rounds', 'notes', 'dashboard', 'settings', 'users', 'all'],
     'rounds' => ['rounds', 'view_notes_high', 'view_participant'],
     'notes'  => ['notes', 'view_participant'],
-    'gate'   => ['gate', 'view_notes_high', 'view_participant']
+    'gate'   => ['gate', 'notes', 'view_notes_high', 'view_participant']
 ]);
 
 /**

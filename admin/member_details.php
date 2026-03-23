@@ -464,6 +464,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             }
         }
 
+        // Edit Warning Text
+        elseif ($_POST['action'] === 'edit_warning') {
+            $warnId = intval($_POST['warning_id'] ?? 0);
+            $newText = trim($_POST['text'] ?? '');
+            if ($warnId > 0 && !empty($newText)) {
+                $stmt = $pdo->prepare("UPDATE warnings SET warning_text = ? WHERE id = ?");
+                $stmt->execute([$newText, $warnId]);
+                auditLog('edit_warning', 'member', $_POST['member_id'] ?? 0, null, "Warning #$warnId => $newText", $currentUser->id ?? null);
+                $response = ['success' => true, 'message' => 'تم تعديل المخالفة'];
+            }
+        }
+
+        // Edit Note Text
+        elseif ($_POST['action'] === 'edit_note') {
+            $noteId = intval($_POST['note_id'] ?? 0);
+            $newText = trim($_POST['text'] ?? '');
+            if ($noteId > 0 && !empty($newText)) {
+                $stmt = $pdo->prepare("UPDATE notes SET note_text = ? WHERE id = ?");
+                $stmt->execute([$newText, $noteId]);
+                auditLog('edit_note', 'member', $_POST['member_id'] ?? 0, null, "Note #$noteId => $newText", $currentUser->id ?? null);
+                $response = ['success' => true, 'message' => 'تم تعديل الملاحظة'];
+            }
+        }
+
     } catch (Exception $e) {
         $response = ['success' => false, 'error' => $e->getMessage()];
     }
@@ -736,7 +760,7 @@ $currentPage = 'member_details';
         <div>
             <div class="framed-photo-container">
                 <?php if (!empty($photoUrl)): ?>
-                    <img src="<?= htmlspecialchars($photoUrl) ?>?v=<?= time() ?>" class="profile-photo" id="profilePhoto" alt="صورة العضو" onclick="viewImage(this.src)">
+                    <img src="../thumb.php?src=<?= urlencode($photoUrl) ?>&w=300&h=300" class="profile-photo" id="profilePhoto" alt="صورة العضو" onclick="viewImage('<?= htmlspecialchars($photoUrl) ?>')">
                     <div class="photo-badge" title="صورة مؤكدة"><i class="fa-solid fa-check"></i></div>
                 <?php else: ?>
                     <div class="profile-photo-placeholder" id="profilePhoto"><i class="fa-solid fa-user"></i></div>
@@ -871,7 +895,7 @@ $currentPage = 'member_details';
                             <div class="col-xs-6">
                                 <div class="img-container">
                                     <?php if ($url): ?>
-                                        <img src="<?= htmlspecialchars($url) ?>" onclick="viewImage(this.src)">
+                                        <img src="../thumb.php?src=<?= urlencode($url) ?>&w=300&h=300" onclick="viewImage('<?= htmlspecialchars($url) ?>')">
                                         <?php if ($canEdit): ?>
                                         <div class="img-overlay-actions">
                                             <button class="btn-img-action btn-danger" onclick="deleteAnyPhoto('<?= $key ?>', '<?= $cfg['source'] ?>')"><i class="fa-solid fa-times"></i></button>
@@ -913,7 +937,7 @@ $currentPage = 'member_details';
                             <div class="col-xs-6">
                                 <div class="img-container">
                                     <?php if ($url): ?>
-                                        <img src="<?= htmlspecialchars($url) ?>" onclick="viewImage(this.src)">
+                                        <img src="../thumb.php?src=<?= urlencode($url) ?>&w=400&h=300" onclick="viewImage('<?= htmlspecialchars($url) ?>')">
                                         <?php if ($canEdit): ?>
                                         <div class="img-overlay-actions">
                                             <button class="btn-img-action btn-danger" onclick="deleteAnyPhoto('<?= $key ?>', 'registration')"><i class="fa-solid fa-times"></i></button>
@@ -949,7 +973,7 @@ $currentPage = 'member_details';
                             <div class="col-xs-12">
                                 <div class="img-container" style="height: 150px;">
                                     <?php if ($url): ?>
-                                        <img src="<?= htmlspecialchars($url) ?>" onclick="viewImage(this.src)">
+                                        <img src="../thumb.php?src=<?= urlencode($url) ?>&w=400&h=300" onclick="viewImage('<?= htmlspecialchars($url) ?>')">
                                         <?php if ($canEdit): ?>
                                         <div class="img-overlay-actions">
                                             <button class="btn-img-action btn-danger" onclick="deleteAnyPhoto('<?= $assetKey ?>', 'registration')"><i class="fa-solid fa-times"></i></button>
@@ -1005,8 +1029,11 @@ $currentPage = 'member_details';
                                     <?= htmlspecialchars($w['warning_text'] ?? '') ?>
                                 </div>
                                 <?php if ($canEdit && empty($w['source'])): ?>
-                                <button class="btn btn-xs btn-success" onclick="resolveWarning('<?= $w['id'] ?>')"><i class="fa-solid fa-check"></i> حل</button>
-                                <button class="btn btn-xs btn-danger" onclick="deleteWarning('<?= $w['id'] ?>', '<?= $memberId ?>')"><i class="fa-solid fa-trash"></i> حذف</button>
+                                <div class="btn-group">
+                                <button class="btn btn-xs btn-warning" onclick="editWarning('<?= $w['id'] ?>', '<?= $memberId ?>')" title="تعديل"><i class="fa-solid fa-pen"></i></button>
+                                <button class="btn btn-xs btn-success" onclick="resolveWarning('<?= $w['id'] ?>')" title="حل"><i class="fa-solid fa-check"></i></button>
+                                <button class="btn btn-xs btn-danger" onclick="deleteWarning('<?= $w['id'] ?>', '<?= $memberId ?>')" title="حذف"><i class="fa-solid fa-trash"></i></button>
+                                </div>
                                 <?php endif; ?>
                             </div>
                             <div style="font-size: 12px; color: #999; margin-top: 5px;">
@@ -1042,12 +1069,20 @@ $currentPage = 'member_details';
                     <?php else: ?>
                         <?php foreach ($notes as $n): ?>
                         <div class="note-card <?= $n['note_type'] ?? 'info' ?>">
-                            <div>
-                                <?php
-                                $typeIcons = ['info' => 'ℹ️', 'warning' => '⚠️', 'blocker' => '🚫', 'positive' => '✅'];
-                                echo $typeIcons[$n['note_type'] ?? 'info'] ?? 'ℹ️';
-                                ?>
-                                <?= htmlspecialchars($n['note_text'] ?? '') ?>
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                                <div>
+                                    <?php
+                                    $typeIcons = ['info' => 'ℹ️', 'warning' => '⚠️', 'blocker' => '🚫', 'positive' => '✅'];
+                                    echo $typeIcons[$n['note_type'] ?? 'info'] ?? 'ℹ️';
+                                    ?>
+                                    <span id="note-text-<?= $n['id'] ?>"><?= htmlspecialchars($n['note_text'] ?? '') ?></span>
+                                </div>
+                                <?php if ($canEdit): ?>
+                                <div class="btn-group" style="flex-shrink:0;">
+                                    <button class="btn btn-xs btn-warning" onclick="editNote('<?= $n['id'] ?>', '<?= $memberId ?>')" title="تعديل"><i class="fa-solid fa-pen"></i></button>
+                                    <button class="btn btn-xs btn-danger" onclick="deleteNote('<?= $n['id'] ?>', '<?= $memberId ?>')" title="حذف"><i class="fa-solid fa-trash"></i></button>
+                                </div>
+                                <?php endif; ?>
                             </div>
                             <div style="font-size: 11px; color: #999; margin-top: 4px;">
                                 <?= htmlspecialchars($n['created_by_name'] ?? $n['created_by_username'] ?? 'نظام') ?> |
@@ -1585,6 +1620,51 @@ function deleteNote(id, memberId) {
         action: 'delete_note',
         note_id: id,
         member_id: memberId
+    }, function(res) {
+        if (res.success) {
+            alert('✅ ' + res.message);
+            location.reload();
+        } else {
+            alert('❌ خطأ: ' + (res.error || 'فشل'));
+        }
+    });
+}
+
+function editWarning(id, memberId) {
+    var currentText = '';
+    // Try to get current text from the DOM
+    var card = $('button[onclick*="editWarning(\'' + id + '\'"]').closest('.warning-card');
+    if (card.length) {
+        var clone = card.find('div:first div:first').clone();
+        clone.find('span').remove();
+        currentText = clone.text().trim();
+    }
+    var newText = prompt('تعديل نص المخالفة:', currentText);
+    if (newText === null || newText.trim() === '') return;
+    $.post('member_details.php?id=<?= urlencode($memberId) ?>', {
+        action: 'edit_warning',
+        warning_id: id,
+        member_id: memberId,
+        text: newText.trim()
+    }, function(res) {
+        if (res.success) {
+            alert('✅ ' + res.message);
+            location.reload();
+        } else {
+            alert('❌ خطأ: ' + (res.error || 'فشل'));
+        }
+    });
+}
+
+function editNote(id, memberId) {
+    var currentText = $('#note-text-' + id).text().trim();
+    var newText = prompt('تعديل نص الملاحظة:', currentText);
+    if (newText === null || newText.trim() === '') return;
+    $.post('member_details.php?id=<?= urlencode($memberId) ?>', {
+        action: 'edit_note',
+        note_id: id,
+        member_id: memberId,
+        text: newText.trim()
     }, function(res) {
         if (res.success) {
             alert('✅ ' + res.message);

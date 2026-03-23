@@ -540,6 +540,9 @@ if (file_exists($frameSettingsFile)) {
                     <?php if(!empty($w['created_by_name'])): ?>
                         <div style="font-size:10px;opacity:0.7;margin-top:2px">بواسطة: <?= htmlspecialchars($w['created_by_name']) ?></div>
                     <?php endif; ?>
+                    <?php if(!empty($w['created_at'])): ?>
+                        <div style="font-size:10px;opacity:0.6;margin-top:3px"><i class="fa-solid fa-calendar"></i> <?= htmlspecialchars(date('Y/m/d - h:i A', strtotime($w['created_at']))) ?></div>
+                    <?php endif; ?>
                 </div>
                 <?php endforeach; ?>
             <?php endif; ?>

@@ -98,11 +98,31 @@ function loadBlacklist() {
     if (!file_exists($file_path)) {
         return ['phones' => [], 'plates' => []];
     }
-    return json_decode(file_get_contents($file_path), true) ?? ['phones' => [], 'plates' => []];
+    $data = json_decode(file_get_contents($file_path), true) ?? ['phones' => [], 'plates' => []];
+    
+    // Auto-migrate old format (string arrays) to new format (object arrays)
+    $migrated = false;
+    foreach (['phones', 'plates'] as $key) {
+        if (!empty($data[$key]) && isset($data[$key][0]) && is_string($data[$key][0])) {
+            $newArr = [];
+            foreach ($data[$key] as $val) {
+                $newArr[] = ['value' => $val, 'reason' => '', 'date' => date('Y-m-d H:i'), 'by' => 'admin'];
+            }
+            $data[$key] = $newArr;
+            $migrated = true;
+        }
+    }
+    if ($migrated) saveBlacklist($data);
+    return $data;
 }
 
 function saveBlacklist($data) {
     file_put_contents('data/blacklist.json', json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+}
+
+// Helper: get value from blacklist entry (works with both old string and new object format)
+function getBlacklistValue($entry) {
+    return is_array($entry) ? ($entry['value'] ?? '') : (string)$entry;
 }
 
 // Participation Types Functions
@@ -379,28 +399,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             
         case 'add_blacklist':
             $value = trim($_POST['value']);
+            $reason = trim($_POST['reason'] ?? '');
             $type = $_POST['type']; // phone or plate
             
-            if ($type == 'phone') {
-                $blacklist['phones'][] = $value;
-                $blacklist['phones'] = array_unique($blacklist['phones']);
-            } else {
-                $blacklist['plates'][] = $value;
-                $blacklist['plates'] = array_unique($blacklist['plates']);
+            $entry = [
+                'value' => $value,
+                'reason' => $reason,
+                'date' => date('Y-m-d H:i'),
+                'by' => $currentUser->username ?? 'admin'
+            ];
+            
+            $key = ($type == 'phone') ? 'phones' : 'plates';
+            // Check if already exists
+            $exists = false;
+            foreach ($blacklist[$key] as $existing) {
+                if (getBlacklistValue($existing) === $value) {
+                    $exists = true;
+                    break;
+                }
+            }
+            if (!$exists) {
+                $blacklist[$key][] = $entry;
             }
             saveBlacklist($blacklist);
+            
+            // Log
+            require_once dirname(__DIR__) . '/include/AdminLogger.php';
+            $adminLogger = new AdminLogger();
+            $adminLogger->log(
+                AdminLogger::ACTION_SETTINGS_CHANGE,
+                $currentUser->username ?? 'unknown',
+                'إضافة للقائمة السوداء: ' . $value . ' (' . $type . ') - السبب: ' . ($reason ?: 'بدون'),
+                ['value' => $value, 'type' => $type, 'reason' => $reason, 'action' => 'add_blacklist']
+            );
+            
             echo json_encode(['success' => true, 'message' => 'تمت الإضافة للقائمة السوداء']);
             exit;
             
         case 'remove_blacklist':
             $value = $_POST['value'];
             $type = $_POST['type'];
+            $key = ($type == 'phone') ? 'phones' : 'plates';
             
-            if ($type == 'phone') {
-                $blacklist['phones'] = array_values(array_diff($blacklist['phones'] ?? [], [$value]));
-            } else {
-                $blacklist['plates'] = array_values(array_diff($blacklist['plates'] ?? [], [$value]));
-            }
+            $blacklist[$key] = array_values(array_filter($blacklist[$key], function($entry) use ($value) {
+                return getBlacklistValue($entry) !== $value;
+            }));
             saveBlacklist($blacklist);
             
             // Log to AdminLogger
@@ -409,11 +452,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $adminLogger->log(
                 AdminLogger::ACTION_SETTINGS_CHANGE,
                 $currentUser->username ?? 'unknown',
-                'حذف من القائمة السوداء: ' . $value . ' (' . $type . ')',
+                'رفع حظر من القائمة السوداء: ' . $value . ' (' . $type . ')',
                 ['value' => $value, 'type' => $type, 'action' => 'remove_blacklist']
             );
             
-            echo json_encode(['success' => true, 'message' => 'تم الحذف من القائمة السوداء']);
+            echo json_encode(['success' => true, 'message' => 'تم رفع الحظر بنجاح']);
             exit;
 
         case 'update_schedule':
@@ -788,36 +831,84 @@ $currentOffer = $ticketCounts['offer'];
             <div class="settings-card">
                 <h4><i class="fa-solid fa-ban"></i> القائمة السوداء (أرقام الهواتف)</h4>
                 <hr>
-                <form onsubmit="addToBlacklist(event, 'phone')" class="form-inline" style="margin-bottom: 10px;">
-                    <input type="text" class="form-control" id="blockPhone" placeholder="رقم الهاتف" required>
-                    <button type="submit" class="btn btn-danger">حظر</button>
+                <form onsubmit="addToBlacklist(event, 'phone')" style="margin-bottom: 15px;">
+                    <div class="row">
+                        <div class="col-xs-4">
+                            <input type="text" class="form-control" id="blockPhone" placeholder="رقم الهاتف" required>
+                        </div>
+                        <div class="col-xs-5">
+                            <input type="text" class="form-control" id="blockPhoneReason" placeholder="سبب الحظر (اختياري)">
+                        </div>
+                        <div class="col-xs-3">
+                            <button type="submit" class="btn btn-danger btn-block">حظر</button>
+                        </div>
+                    </div>
                 </form>
-                <ul class="list-group" style="max-height: 200px; overflow-y: auto;">
-                    <?php foreach ($blacklist['phones'] as $phone): ?>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        <?= htmlspecialchars($phone) ?>
-                        <button class="btn btn-xs btn-default pull-left" onclick="removeFromBlacklist('<?= $phone ?>', 'phone')"><i class="fa-solid fa-times text-danger"></i></button>
-                    </li>
+                <?php if (!empty($blacklist['phones'])): ?>
+                <table class="table table-condensed table-bordered" style="font-size:12px;">
+                    <thead><tr style="background:#fff5f5;"><th>الرقم</th><th>السبب</th><th>التاريخ</th><th>بواسطة</th><th style="width:40px"></th></tr></thead>
+                    <tbody>
+                    <?php foreach ($blacklist['phones'] as $entry):
+                        $val = is_array($entry) ? ($entry['value'] ?? '') : $entry;
+                        $reason = is_array($entry) ? ($entry['reason'] ?? '') : '';
+                        $date = is_array($entry) ? ($entry['date'] ?? '') : '';
+                        $by = is_array($entry) ? ($entry['by'] ?? '') : '';
+                    ?>
+                    <tr>
+                        <td dir="ltr" style="font-weight:bold;"><?= htmlspecialchars($val) ?></td>
+                        <td><?= htmlspecialchars($reason ?: '—') ?></td>
+                        <td style="font-size:11px;"><?= htmlspecialchars($date) ?></td>
+                        <td><?= htmlspecialchars($by) ?></td>
+                        <td><button class="btn btn-xs btn-success" onclick="removeFromBlacklist('<?= htmlspecialchars($val, ENT_QUOTES) ?>', 'phone')" title="رفع الحظر"><i class="fa-solid fa-unlock"></i></button></td>
+                    </tr>
                     <?php endforeach; ?>
-                </ul>
+                    </tbody>
+                </table>
+                <?php else: ?>
+                <div class="text-center text-muted" style="padding:20px;">لا يوجد أرقام محظورة</div>
+                <?php endif; ?>
             </div>
         </div>
         <div class="col-md-6">
             <div class="settings-card">
                 <h4><i class="fa-solid fa-ban"></i> القائمة السوداء (أرقام اللوحات)</h4>
                 <hr>
-                <form onsubmit="addToBlacklist(event, 'plate')" class="form-inline" style="margin-bottom: 10px;">
-                    <input type="text" class="form-control" id="blockPlate" placeholder="رقم اللوحة" required>
-                    <button type="submit" class="btn btn-danger">حظر</button>
+                <form onsubmit="addToBlacklist(event, 'plate')" style="margin-bottom: 15px;">
+                    <div class="row">
+                        <div class="col-xs-4">
+                            <input type="text" class="form-control" id="blockPlate" placeholder="رقم اللوحة" required>
+                        </div>
+                        <div class="col-xs-5">
+                            <input type="text" class="form-control" id="blockPlateReason" placeholder="سبب الحظر (اختياري)">
+                        </div>
+                        <div class="col-xs-3">
+                            <button type="submit" class="btn btn-danger btn-block">حظر</button>
+                        </div>
+                    </div>
                 </form>
-                <ul class="list-group" style="max-height: 200px; overflow-y: auto;">
-                    <?php foreach ($blacklist['plates'] as $plate): ?>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        <?= htmlspecialchars($plate) ?>
-                        <button class="btn btn-xs btn-default pull-left" onclick="removeFromBlacklist('<?= $plate ?>', 'plate')"><i class="fa-solid fa-times text-danger"></i></button>
-                    </li>
+                <?php if (!empty($blacklist['plates'])): ?>
+                <table class="table table-condensed table-bordered" style="font-size:12px;">
+                    <thead><tr style="background:#fff5f5;"><th>اللوحة</th><th>السبب</th><th>التاريخ</th><th>بواسطة</th><th style="width:40px"></th></tr></thead>
+                    <tbody>
+                    <?php foreach ($blacklist['plates'] as $entry):
+                        $val = is_array($entry) ? ($entry['value'] ?? '') : $entry;
+                        $reason = is_array($entry) ? ($entry['reason'] ?? '') : '';
+                        $date = is_array($entry) ? ($entry['date'] ?? '') : '';
+                        $by = is_array($entry) ? ($entry['by'] ?? '') : '';
+                    ?>
+                    <tr>
+                        <td style="font-weight:bold;"><?= htmlspecialchars($val) ?></td>
+                        <td><?= htmlspecialchars($reason ?: '—') ?></td>
+                        <td style="font-size:11px;"><?= htmlspecialchars($date) ?></td>
+                        <td><?= htmlspecialchars($by) ?></td>
+                        <td><button class="btn btn-xs btn-success" onclick="removeFromBlacklist('<?= htmlspecialchars($val, ENT_QUOTES) ?>', 'plate')" title="رفع الحظر"><i class="fa-solid fa-unlock"></i></button></td>
+                    </tr>
                     <?php endforeach; ?>
-                </ul>
+                    </tbody>
+                </table>
+                <?php else: ?>
+                <div class="text-center text-muted" style="padding:20px;">لا يوجد لوحات محظورة</div>
+                <?php endif; ?>
             </div>
         </div>
     </div>
@@ -1083,15 +1174,17 @@ function deleteType(id) {
 function addToBlacklist(e, type) {
     e.preventDefault();
     const val = type === 'phone' ? $('#blockPhone').val() : $('#blockPlate').val();
+    const reason = type === 'phone' ? $('#blockPhoneReason').val() : $('#blockPlateReason').val();
+    if (!val.trim()) { alert('أدخل القيمة أولاً'); return; }
     $.ajax({
         url: '', type: 'POST',
-        data: { action: 'add_blacklist', type: type, value: val },
+        data: { action: 'add_blacklist', type: type, value: val, reason: reason },
         success: function(r) { location.reload(); }
     });
 }
 
 function removeFromBlacklist(val, type) {
-    if(!confirm('إزالة من الحظر؟')) return;
+    if(!confirm('هل تريد رفع الحظر عن هذا العنصر؟')) return;
     $.ajax({
         url: '', type: 'POST',
         data: { action: 'remove_blacklist', type: type, value: val },

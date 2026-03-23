@@ -1046,7 +1046,7 @@ class MemberService {
         $member = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if ($member) {
-            // Update name if different (member might have changed name)
+            // Update name/instagram if different
             if ($member['name'] !== $name) {
                 $pdo->prepare("UPDATE members SET name = ? WHERE id = ?")
                     ->execute([$name, $member['id']]);
@@ -1572,16 +1572,23 @@ class MemberService {
                     $d['plate_full'] = $memberRecord['plate_full'];
                     $d['participation_type'] = $reg['participation_type'];
                     $d['status'] = $reg['status'];
-                    $d['personal_photo'] = $finalPhoto;
-                    $d['front_image'] = (string)$reg['front_image'];
-                    $d['side_image'] = (string)$reg['side_image'];
-                    $d['back_image'] = (string)$reg['back_image'];
-                    $d['edited_image'] = (string)$reg['edited_image'];
-                    $d['acceptance_image'] = (string)$reg['acceptance_image'];
-                    $d['national_id_front'] = (string)$member['national_id_front'];
-                    $d['national_id_back'] = (string)$member['national_id_back'];
-                    $d['license_front'] = $memberRecord['images']['license_front'] ?? '';
-                    $d['license_back'] = $memberRecord['images']['license_back'] ?? '';
+                    $d['personal_photo'] = !empty($finalPhoto) ? $finalPhoto : ($d['personal_photo'] ?? '');
+                    $d['front_image'] = !empty($reg['front_image']) ? (string)$reg['front_image'] : ($d['front_image'] ?? '');
+                    $d['side_image'] = !empty($reg['side_image']) ? (string)$reg['side_image'] : ($d['side_image'] ?? '');
+                    $d['back_image'] = !empty($reg['back_image']) ? (string)$reg['back_image'] : ($d['back_image'] ?? '');
+                    $d['edited_image'] = !empty($reg['edited_image']) ? (string)$reg['edited_image'] : ($d['edited_image'] ?? '');
+                    $d['acceptance_image'] = !empty($reg['acceptance_image']) ? (string)$reg['acceptance_image'] : ($d['acceptance_image'] ?? '');
+                    $d['national_id_front'] = !empty($member['national_id_front']) ? (string)$member['national_id_front'] : ($d['national_id_front'] ?? '');
+                    $d['national_id_back'] = !empty($member['national_id_back']) ? (string)$member['national_id_back'] : ($d['national_id_back'] ?? '');
+                    // Preserve existing license images — don't overwrite with empty
+                    $newLicFront = $memberRecord['images']['license_front'] ?? '';
+                    $newLicBack = $memberRecord['images']['license_back'] ?? '';
+                    $d['license_front'] = !empty($newLicFront) ? $newLicFront : ($d['license_front'] ?? ($d['images']['license_front'] ?? ''));
+                    $d['license_back'] = !empty($newLicBack) ? $newLicBack : ($d['license_back'] ?? ($d['images']['license_back'] ?? ''));
+                    
+                    // Preserve existing id_front/id_back from data.json
+                    $existingIdFront = $d['id_front'] ?? ($d['images']['id_front'] ?? '');
+                    $existingIdBack = $d['id_back'] ?? ($d['images']['id_back'] ?? '');
                     
                     // Add structured images array for dashboard
                     $d['images'] = [
@@ -1593,8 +1600,8 @@ class MemberService {
                         'acceptance_image' => $d['acceptance_image'],
                         'national_id_front' => $d['national_id_front'],
                         'national_id_back' => $d['national_id_back'],
-                        'id_front' => $d['id_front'] ?? $d['images']['id_front'] ?? '',
-                        'id_back' => $d['id_back'] ?? $d['images']['id_back'] ?? '',
+                        'id_front' => $existingIdFront,
+                        'id_back' => $existingIdBack,
                         'license_front' => $d['license_front'],
                         'license_back' => $d['license_back']
                     ];
@@ -1694,7 +1701,9 @@ class MemberService {
                     car_color = COALESCE(?, car_color),
                     plate_number = COALESCE(?, plate_number),
                     plate_letter = COALESCE(?, plate_letter),
-                    plate_governorate = COALESCE(?, plate_governorate)
+                    plate_governorate = COALESCE(?, plate_governorate),
+                    license_front = COALESCE(?, license_front),
+                    license_back = COALESCE(?, license_back)
                 WHERE id = ?
             ");
             $stmt->execute([
@@ -1707,6 +1716,8 @@ class MemberService {
                 $reg['plate_number'] ?? null,
                 $reg['plate_letter'] ?? null,
                 $reg['plate_governorate'] ?? null,
+                $reg['license_front'] ?? ($reg['images']['license_front'] ?? null),
+                $reg['license_back'] ?? ($reg['images']['license_back'] ?? null),
                 $existingId
             ]);
             
@@ -1731,6 +1742,21 @@ class MemberService {
                 ]);
             } catch (Exception $ePart) {
                 // Ignore, participant might not exist
+            }
+            
+            // Also update member's instagram if available
+            $regInstagram = $reg['instagram'] ?? '';
+            if (!empty($regInstagram)) {
+                try {
+                    // Find member_id from registration
+                    $memStmt = $pdo->prepare("SELECT member_id FROM registrations WHERE id = ?");
+                    $memStmt->execute([$existingId]);
+                    $memId = $memStmt->fetchColumn();
+                    if ($memId) {
+                        $pdo->prepare("UPDATE members SET instagram = COALESCE(?, instagram) WHERE id = ?")
+                            ->execute([$regInstagram, $memId]);
+                    }
+                } catch (Exception $e) {}
             }
             
             return $existingId;
@@ -1758,8 +1784,9 @@ class MemberService {
                     plate_governorate, plate_letter, plate_number,
                     engine_size, participation_type, status,
                     personal_photo, front_image, side_image, back_image,
-                    edited_image, acceptance_image, session_badge_token, championship_name
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    edited_image, acceptance_image, session_badge_token, championship_name,
+                    license_front, license_back
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
             
             $stmt->execute([
@@ -1782,15 +1809,29 @@ class MemberService {
                 $reg['edited_image'] ?? ($reg['images']['edited_image'] ?? null),
                 $reg['acceptance_image'] ?? ($reg['images']['acceptance_image'] ?? null),
                 $reg['session_badge_token'] ?? $reg['badge_token'] ?? null,
-                $champName
+                $champName,
+                $reg['license_front'] ?? ($reg['images']['license_front'] ?? null),
+                $reg['license_back'] ?? ($reg['images']['license_back'] ?? null)
             ]);
             
             $newId = $pdo->lastInsertId();
             
-            // 4. Update Member Audit if needed
+            // 4. Update Member fields (instagram, governorate, etc.)
+            $updateFields = [];
+            $updateValues = [];
             if (!empty($reg['registration_code']) && $member['permanent_code'] === 'TEMP') {
-                $pdo->prepare("UPDATE members SET permanent_code = ? WHERE id = ?")
-                    ->execute([$reg['registration_code'], $member['id']]);
+                $updateFields[] = 'permanent_code = ?';
+                $updateValues[] = $reg['registration_code'];
+            }
+            $regInstagram = $reg['instagram'] ?? '';
+            if (!empty($regInstagram)) {
+                $updateFields[] = 'instagram = ?';
+                $updateValues[] = $regInstagram;
+            }
+            if (!empty($updateFields)) {
+                $updateValues[] = $member['id'];
+                $pdo->prepare("UPDATE members SET " . implode(', ', $updateFields) . " WHERE id = ?")
+                    ->execute($updateValues);
             }
 
             // 5. Sync to Participants Cache (Scanner Table)

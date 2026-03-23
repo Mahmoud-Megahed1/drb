@@ -94,7 +94,6 @@ if ($registrationIndex === -1) {
 }
 
 // Handle actions
-$approvalContext = null; // Will hold context for background processing
 try {
     switch ($action) {
         case 'approve':
@@ -106,15 +105,6 @@ try {
                 'send_qr_only' => isset($_POST['send_qr_only']) ? (int)$_POST['send_qr_only'] : 0
             ];
             $result = handleApproval($data, $registrationIndex, $registration, $messageOptions);
-            // If approval succeeded, prepare context for background tasks
-            if ($result['success'] ?? false) {
-                $approvalContext = [
-                    'data' => $data,
-                    'index' => $registrationIndex,
-                    'registration' => $registration,
-                    'messageOptions' => $messageOptions
-                ];
-            }
             break;
             
         case 'reject':
@@ -142,45 +132,9 @@ try {
     $result = ['success' => false, 'message' => 'خطأ فادح: ' . $e->getMessage(), 'file' => $e->getFile(), 'line' => $e->getLine()];
 }
 
-// *** SEND RESPONSE FIRST, THEN DO BACKGROUND WORK ***
-$jsonResponse = json_encode($result);
-
-// Close HTTP connection (browser gets response immediately)
-if (function_exists('fastcgi_finish_request')) {
-    echo $jsonResponse;
-    fastcgi_finish_request();
-} else {
-    ignore_user_abort(true);
-    if (ob_get_level() > 0) ob_end_clean();
-    header("Connection: close");
-    header("Content-Type: application/json; charset=utf-8");
-    ob_start();
-    echo $jsonResponse;
-    $size = ob_get_length();
-    header("Content-Length: $size");
-    ob_end_flush();
-    @ob_flush();
-    flush();
-}
-
-// *** BACKGROUND: Process approval WhatsApp messages AFTER response ***
-if ($approvalContext !== null) {
-    try {
-        // Re-read data in case it was updated
-        $bgData = json_decode(file_get_contents($dataFile), true);
-        if (is_array($bgData)) {
-            processApprovalBackground(
-                $bgData,
-                $approvalContext['index'],
-                $bgData[$approvalContext['index']] ?? $approvalContext['registration'],
-                $approvalContext['messageOptions']
-            );
-        }
-    } catch (\Throwable $e) {
-        $debugFile = __DIR__ . '/admin/data/approval_trace.log';
-        file_put_contents($debugFile, date('[H:i:s] ') . "BG ERROR: " . $e->getMessage() . "\n", FILE_APPEND);
-    }
-}
+// *** SEND RESPONSE (WhatsApp already queued inside handleApproval) ***
+header("Content-Type: application/json; charset=utf-8");
+echo json_encode($result);
 exit;
 
 /**
@@ -281,43 +235,14 @@ function handleApproval(&$data, $index, $registration, $messageOptions = []) {
         $data[$index]['badge_id'] = $data[$index]['badge_token'];
     }
 
-    // --- CRITICAL FIX: SAVE HERE IMMEDIATELY ---
-    file_put_contents($debugLog, date('[H:i:s] ') . "Saving data Phase 1...\n", FILE_APPEND);
+    // --- SAVE DATA ---
+    file_put_contents($debugLog, date('[H:i:s] ') . "Saving data...\n", FILE_APPEND);
     if (!saveData($data)) {
         return ['success' => false, 'message' => 'فشل في حفظ بيانات القبول'];
     }
-    file_put_contents($debugLog, date('[H:i:s] ') . "Saved OK. Returning immediately.\n", FILE_APPEND);
-
-    // Return success IMMEDIATELY - heavy tasks run in background after response
-    return [
-        'success' => true,
-        'message' => 'تم قبول التسجيل بنجاح'
-    ];
-}
-
-/**
- * Process heavy approval tasks in background (AFTER response is sent to browser)
- * This runs after fastcgi_finish_request() so the browser already got the response
- */
-function processApprovalBackground(&$data, $index, $registration, $messageOptions = []) {
-    $debugLog = __DIR__ . '/admin/data/approval_trace.log';
-    file_put_contents($debugLog, date('[H:i:s] ') . "BG: Start {$registration['wasel']}\n", FILE_APPEND);
     
-    $sendAcceptance = $messageOptions['send_acceptance'] ?? 1;
-    $sendBadge = $messageOptions['send_badge'] ?? 1;
-    
-    $username = 'admin';
-    if (isset($_SESSION['user'])) {
-        if (is_object($_SESSION['user']) && isset($_SESSION['user']->username)) {
-            $username = $_SESSION['user']->username;
-        } elseif (is_array($_SESSION['user']) && isset($_SESSION['user']['username'])) {
-            $username = $_SESSION['user']['username'];
-        }
-    }
-    
+    // ============ WHATSAPP QUEUING (SQLite write - fast, no HTTP) ============
     $processLog = [];
-    
-    // ============ WHATSAPP (just queues messages - fast) ============
     try {
         $waSender = new WaSender();
         $host = $_SERVER['HTTP_HOST'] ?? 'yellowgreen-quail-410393.hostingersite.com';
@@ -339,7 +264,7 @@ function processApprovalBackground(&$data, $index, $registration, $messageOption
                 [$registration['full_name'] ?? '', $registration['wasel'] ?? '', $registration['car_type'] ?? '', $registration['plate_full'] ?? '', $registration['registration_code'] ?? ''],
                 $acceptCaption);
             $acceptCaption .= "\n\n🌐 *رابط بطاقة القبول:* \n" . $acceptanceLink;
-            $acceptResult = $waSender->sendMessage($registration['phone'], $acceptCaption, $registration['country_code'] ?? '+964');
+            $acceptResult = $waSender->sendMessage($registration['phone'], $acceptCaption, $registration['country_code'] ?? '+964', ['type' => 'acceptance', 'name' => $registration['full_name'] ?? '', 'wasel' => $registration['wasel'] ?? '']);
             $processLog[] = ($acceptResult['success'] ?? false) ? 'Accept: Queued' : 'Accept: FAILED - ' . ($acceptResult['error'] ?? 'unknown');
         }
         
@@ -355,7 +280,7 @@ function processApprovalBackground(&$data, $index, $registration, $messageOption
                 $badgeCaption);
             $badgeCaption .= "\n\n📥 *افتح الباج الكامل:*\n" . $badgeLink;
             
-            $badgeResult = $waSender->sendImage($registration['phone'], $qrCodeUrl, $badgeCaption, $registration['country_code'] ?? '+964');
+            $badgeResult = $waSender->sendImage($registration['phone'], $qrCodeUrl, $badgeCaption, $registration['country_code'] ?? '+964', ['type' => 'badge', 'name' => $registration['full_name'] ?? '', 'wasel' => $registration['wasel'] ?? '']);
             $processLog[] = ($badgeResult['success'] ?? false) ? 'Badge: Queued' : 'Badge: FAILED - ' . ($badgeResult['error'] ?? 'unknown');
         }
     } catch (\Throwable $e) {
@@ -367,7 +292,13 @@ function processApprovalBackground(&$data, $index, $registration, $messageOption
     try { MemberService::syncToJsonByWasel($registration['wasel']); } catch (\Throwable $e) {}
     try { RegistrationActionLogger::log('approved', $data[$index], 'تم القبول', $username); } catch (\Throwable $e) {}
     
-    file_put_contents($debugLog, date('[H:i:s] ') . "BG: Done {$registration['wasel']} | " . implode(' | ', $processLog) . "\n", FILE_APPEND);
+    file_put_contents($debugLog, date('[H:i:s] ') . "Done {$registration['wasel']} | " . implode(' | ', $processLog) . "\n", FILE_APPEND);
+    
+    return [
+        'success' => true,
+        'message' => 'تم قبول التسجيل بنجاح',
+        'whatsapp_log' => $processLog
+    ];
 }
 
 
