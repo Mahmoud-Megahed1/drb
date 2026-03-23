@@ -268,26 +268,32 @@ try {
     // 4. Enrich Notes
     foreach ($notes as &$note) {
         $note['visibility'] = json_decode($note['visibility'], true) ?? ['all'];
-        
-        $note['type_label'] = match($note['note_type']) {
-            'info' => 'معلومة',
-            'warning' => 'تحذير',
-            'blocker' => 'مانع',
-            default => 'ملاحظة'
-        };
+        $noteTypeRaw = strtolower(trim((string)($note['note_type'] ?? '')));
+        $notePriorityRaw = strtolower(trim((string)($note['priority'] ?? '')));
+
+        if ($noteTypeRaw === 'blocker') {
+            $note['type_label'] = 'منع';
+            $note['type_icon'] = '🛑';
+            $note['display_type_key'] = 'blocker';
+        } elseif ($noteTypeRaw === 'warning' && $notePriorityRaw === 'high') {
+            $note['type_label'] = 'حرمان';
+            $note['type_icon'] = '⛔';
+            $note['display_type_key'] = 'deprivation';
+        } elseif ($noteTypeRaw === 'warning') {
+            $note['type_label'] = 'تحذير';
+            $note['type_icon'] = '⚠️';
+            $note['display_type_key'] = 'warning';
+        } else {
+            $note['type_label'] = 'ملاحظة';
+            $note['type_icon'] = '📝';
+            $note['display_type_key'] = 'info';
+        }
 
         $note['priority_label'] = match($note['priority']) {
             'low' => 'عادي',
             'medium' => 'متوسط',
             'high' => 'مهم',
             default => 'عادي'
-        };
-
-        $note['type_icon'] = match($note['note_type']) {
-            'info' => 'ℹ️',
-            'warning' => '⚠️',
-            'blocker' => '🚫',
-            default => '📝'
         };
         
         $noteTime = strtotime($note['created_at']);

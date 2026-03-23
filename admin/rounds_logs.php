@@ -104,10 +104,30 @@ $totalPages = ceil($totalLogs / $perPage);
 $offset = ($page - 1) * $perPage;
 $logsPage = array_slice($filteredLogs, $offset, $perPage);
 
-// Stats
-$totalEnters = count(array_filter($logs, fn($l) => ($l['action'] ?? '') === 'enter'));
-$totalApproved = count(array_filter($participants, fn($p) => ($p['status'] ?? '') === 'approved'));
-$uniqueParticipants = count(array_unique(array_column($logs, 'participant_id')));
+// Stats (aligned with rounds scanner logic)
+$allowedParticipationTypes = ['المشاركة بالاستعراض الحر', 'free_show'];
+$eligibleParticipants = [];
+
+foreach ($participants as $p) {
+    $isApproved = ($p['status'] ?? '') === 'approved';
+    $pType = $p['participation_type'] ?? '';
+    $pid = (string)($p['wasel'] ?? '');
+
+    if ($isApproved && in_array($pType, $allowedParticipationTypes, true) && $pid !== '') {
+        $eligibleParticipants[$pid] = true;
+    }
+}
+
+$enterLogs = array_filter($logs, fn($l) => ($l['action'] ?? '') === 'enter');
+$eligibleEnterLogs = array_filter($enterLogs, function($l) use ($eligibleParticipants) {
+    $pid = (string)($l['participant_id'] ?? '');
+    return $pid !== '' && isset($eligibleParticipants[$pid]);
+});
+
+$totalEligibleParticipants = count($eligibleParticipants);
+$totalEnters = count($eligibleEnterLogs);
+$uniqueParticipants = count(array_unique(array_map('strval', array_column($eligibleEnterLogs, 'participant_id'))));
+$remainingParticipants = max(0, $totalEligibleParticipants - $uniqueParticipants);
 
 // Get unique rounds
 $rounds = array_unique(array_column($logs, 'round_id'));
@@ -292,11 +312,11 @@ sort($rounds);
                 <div class="label">عمليات الدخول</div>
             </div>
             <div class="stat-card red">
-                <div class="number"><?= number_format($totalApproved - $uniqueParticipants) ?></div>
+                <div class="number"><?= number_format($remainingParticipants) ?></div>
                 <div class="label">المتبقي من المتسابقين</div>
             </div>
             <div class="stat-card blue">
-                <div class="number"><?= number_format($uniqueParticipants) ?></div>
+                <div class="number"><?= number_format($totalEligibleParticipants) ?></div>
                 <div class="label">المتسابقين</div>
             </div>
             <div class="stat-card purple">

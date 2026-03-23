@@ -33,10 +33,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_single']) && $
         require_once '../include/db.php';
         $pdo = \db();
         $deleteId = intval($_POST['delete_id'] ?? 0);
-        $deleteType = $_POST['delete_type'] ?? '';
-        
-        if ($deleteId > 0 && in_array($deleteType, ['warning', 'info', 'blocker'])) {
-            if ($deleteType === 'warning') {
+        $deleteSource = $_POST['delete_source'] ?? '';
+
+        if ($deleteId > 0) {
+            if ($deleteSource === 'warnings') {
                 $pdo->prepare("DELETE FROM warnings WHERE id = ?")->execute([$deleteId]);
             } else {
                 $pdo->prepare("DELETE FROM notes WHERE id = ?")->execute([$deleteId]);
@@ -84,6 +84,7 @@ try {
     // Union Query to get both Warnings and Notes
     $sql = "
     SELECT 
+        'warnings' as source_table,
         'warning' as type,
         w.id,
         w.member_id as participant_id,
@@ -103,6 +104,7 @@ try {
     UNION ALL
 
     SELECT 
+        'notes' as source_table,
         n.note_type as type,
         n.id,
         n.member_id as participant_id,
@@ -128,6 +130,7 @@ try {
             'source' => 'db',
             'db_id' => $note['id'],
             'db_type' => $note['type'],
+            'db_source' => $note['source_table'] ?? 'notes',
             'type' => $note['type'],
             'participant_name' => $note['participant_name'],
             'participant_id' => $note['participant_code'] ?? $note['participant_id'],
@@ -135,6 +138,7 @@ try {
             'rating' => $note['rating'],
             'image_path' => $note['image_path'],
             'created_by' => $note['created_by_name'],
+            'severity' => $note['severity'] ?? 'low',
             'timestamp' => $note['timestamp'] ?: strtotime($note['created_at'])
         ];
     }
@@ -204,6 +208,7 @@ $notesLogs = $allNotes;
         .note-type-info { background: #17a2b8; color: #fff; padding: 4px 10px; border-radius: 5px; }
         .note-type-warning { background: #ffc107; color: #000; padding: 4px 10px; border-radius: 5px; }
         .note-type-blocker { background: #dc3545; color: #fff; padding: 4px 10px; border-radius: 5px; }
+        .note-type-deprivation { background: #ff6b35; color: #fff; padding: 4px 10px; border-radius: 5px; }
         .badge-id { 
             background: #333; 
             color: #0f0; 
@@ -211,9 +216,6 @@ $notesLogs = $allNotes;
             border-radius: 5px; 
             font-family: monospace;
             font-size: 13px;
-        }
-        .rating-stars {
-            font-size: 16px;
         }
         .recorded-by {
             background: #6c757d;
@@ -264,8 +266,6 @@ $notesLogs = $allNotes;
                         <th style="width: 100px;">النوع</th>
                         <th style="width: 100px;">الأولوية</th>
                         <th>الملاحظة</th>
-                        <th style="width: 100px;">التقييم</th>
-                        <th style="width: 70px;">الصورة</th>
                         <th style="width: 120px;">سُجلت بواسطة</th>
                         <th style="width: 140px;">التاريخ</th>
                         <th style="width: 70px;">إجراء</th>
@@ -276,18 +276,25 @@ $notesLogs = $allNotes;
             // Type formatting
             $typeClass = 'note-type-info';
             $typeLabel = 'معلومة ℹ️';
-            $nType = $note['type'] ?? 'info';
-            
-            if ($nType === 'warning') {
+            $nType = strtolower(trim((string)($note['type'] ?? 'info')));
+            $sev = strtolower(trim((string)($note['severity'] ?? 'low')));
+
+            $blockerAliases = ['blocker', 'block', 'ban', 'blocked', 'deny', 'denied', 'prevent', 'prohibited', 'منع', 'ايقاف', 'إيقاف'];
+            $deprivationAliases = ['deprivation', 'deprive', 'suspension', 'حرمان'];
+            $warningAliases = ['warning', 'warn', 'تحذير'];
+
+            if (in_array($nType, $blockerAliases, true)) {
+                $typeClass = 'note-type-blocker';
+                $typeLabel = 'منع 🛑';
+            } elseif (in_array($nType, $deprivationAliases, true) || (in_array($nType, $warningAliases, true) && $sev === 'high')) {
+                $typeClass = 'note-type-deprivation';
+                $typeLabel = 'حرمان ⛔';
+            } elseif (in_array($nType, $warningAliases, true)) {
                 $typeClass = 'note-type-warning';
                 $typeLabel = 'تحذير ⚠️';
-            } elseif ($nType === 'blocker') {
-                $typeClass = 'note-type-blocker';
-                $typeLabel = 'مانع 🛑';
             }
 
             // Severity/Priority formatting
-            $sev = $note['severity'] ?? 'low';
             $sevLabel = 'عادي';
             $sevClass = 'label-default';
             
@@ -299,10 +306,6 @@ $notesLogs = $allNotes;
                 $sevClass = 'label-warning';
             }
             
-            // Rating
-            $rating = intval($note['rating'] ?? 0);
-            $ratingStars = str_repeat('★', $rating) . str_repeat('☆', 5 - $rating);
-            $ratingColor = $rating >= 4 ? '#28a745' : ($rating >= 3 ? '#ffc107' : '#dc3545');
         ?>
         <tr>
             <td><?= $index + 1 ?></td>
@@ -311,24 +314,6 @@ $notesLogs = $allNotes;
             <td><span class="<?= $typeClass ?>"><?= $typeLabel ?></span></td>
             <td><span class="label <?= $sevClass ?>"><?= $sevLabel ?></span></td>
             <td style="max-width: 300px; word-wrap: break-word;"><?= htmlspecialchars($note['text']) ?></td>
-            <td>
-                <?php if ($rating > 0): ?>
-                <span class="rating-stars" style="color: <?= $ratingColor ?>;" title="<?= $rating ?> من 5">
-                    <?= $ratingStars ?>
-                </span>
-                <?php else: ?>
-                <span class="text-muted">-</span>
-                <?php endif; ?>
-            </td>
-            <td>
-                <?php if (!empty($note['image_path']) && file_exists(__DIR__ . '/../' . $note['image_path'])): ?>
-                <img src="../<?= htmlspecialchars($note['image_path']) ?>" 
-                     style="width: 60px; height: 60px; object-fit: cover; border-radius: 5px; cursor: pointer;"
-                     onclick="showImage('<?= htmlspecialchars($note['image_path']) ?>')">
-                <?php else: ?>
-                <span style="color: #999;">-</span>
-                <?php endif; ?>
-            </td>
             <td><span class="recorded-by"><i class="fa-solid fa-user"></i> <?= htmlspecialchars($note['created_by']) ?></span></td>
             <td><small><?= date('Y-m-d H:i', $note['timestamp']) ?></small></td>
             <td>
@@ -337,6 +322,7 @@ $notesLogs = $allNotes;
                     <input type="hidden" name="delete_single" value="1">
                     <input type="hidden" name="delete_id" value="<?= $note['db_id'] ?>">
                     <input type="hidden" name="delete_type" value="<?= htmlspecialchars($note['db_type']) ?>">
+                    <input type="hidden" name="delete_source" value="<?= htmlspecialchars($note['db_source'] ?? 'notes') ?>">
                     <button type="submit" class="btn btn-danger btn-xs" title="حذف"><i class="fa-solid fa-trash"></i></button>
                 </form>
                 <?php else: ?>
@@ -357,21 +343,6 @@ $notesLogs = $allNotes;
     </div>
 </div>
 
-<!-- Image Modal -->
-<div class="modal fade" id="imageModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <button type="button" class="close" data-dismiss="modal">&times;</button>
-                <h4 class="modal-title">عرض الصورة</h4>
-            </div>
-            <div class="modal-body text-center">
-                <img id="modalImage" src="" style="max-width: 100%; max-height: 80vh;">
-            </div>
-        </div>
-    </div>
-</div>
-
 <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@3.4.1/dist/js/bootstrap.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
@@ -380,18 +351,13 @@ $notesLogs = $allNotes;
 <script>
 $(document).ready(function() {
     $('#notesTable').DataTable({
-        order: [[8, 'desc']],
+        order: [[7, 'desc']],
         pageLength: 25,
         language: {
             url: '//cdn.datatables.net/plug-ins/1.13.6/i18n/ar.json'
         }
     });
 });
-
-function showImage(path) {
-    document.getElementById('modalImage').src = '../' + path;
-    $('#imageModal').modal('show');
-}
 </script>
 </body>
 </html>

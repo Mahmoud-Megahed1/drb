@@ -200,6 +200,7 @@ usort($participantsList, function($a, $b) {
         }
         .note-item.info { border-color: #17a2b8; }
         .note-item.warning { border-color: #ffc107; }
+        .note-item.deprivation { border-color: #ff6b35; }
         .note-item.blocker { border-color: #dc3545; }
         .note-item .note-header {
             display: flex;
@@ -241,8 +242,8 @@ usort($participantsList, function($a, $b) {
             transition: all 0.2s;
         }
         .type-btn.selected { border-color: #9b59b6; background: rgba(155,89,182,0.2); }
-        .type-btn.info.selected { border-color: #17a2b8; background: rgba(23,162,184,0.2); }
         .type-btn.warning.selected { border-color: #ffc107; background: rgba(255,193,7,0.2); }
+        .type-btn.deprivation.selected { border-color: #ff6b35; background: rgba(255,107,53,0.22); }
         .type-btn.blocker.selected { border-color: #dc3545; background: rgba(220,53,69,0.2); }
         
         /* Priority */
@@ -459,9 +460,9 @@ usort($participantsList, function($a, $b) {
                 <div class="form-group">
                     <label><i class="fa-solid fa-tag"></i> نوع الملاحظة</label>
                     <div class="type-selector">
-                        <button type="button" class="type-btn info selected" data-type="info"><i class="fa-solid fa-info-circle"></i> معلومة</button>
-                        <button type="button" class="type-btn warning" data-type="warning"><i class="fa-solid fa-exclamation-triangle"></i> تحذير</button>
-                        <button type="button" class="type-btn blocker" data-type="blocker"><i class="fa-solid fa-ban"></i> مانع</button>
+                        <button type="button" class="type-btn warning selected" data-type="warning"><i class="fa-solid fa-exclamation-triangle"></i> تحذير</button>
+                        <button type="button" class="type-btn deprivation" data-type="deprivation"><i class="fa-solid fa-hand"></i> حرمان</button>
+                        <button type="button" class="type-btn blocker" data-type="blocker"><i class="fa-solid fa-ban"></i> منع</button>
                     </div>
                 </div>
                 
@@ -518,7 +519,7 @@ usort($participantsList, function($a, $b) {
     <script>
     // State
     let currentParticipant = null;
-    let selectedType = 'info';
+    let selectedType = 'warning';
     let html5QrCode = null;
     const DEVICE_ID = '<?= htmlspecialchars($user['device'] ?? 'unknown') ?>';
     
@@ -528,8 +529,38 @@ usort($participantsList, function($a, $b) {
             document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('selected'));
             this.classList.add('selected');
             selectedType = this.dataset.type;
+            if (selectedType === 'deprivation') {
+                const highPriority = document.querySelector('input[name="priority"][value="high"]');
+                if (highPriority) highPriority.checked = true;
+            }
         });
     });
+
+    function mapTypeForSubmit(type, selectedPriority) {
+        if (type === 'deprivation') {
+            return { note_type: 'warning', priority: 'high' };
+        }
+        if (type === 'blocker') {
+            return {
+                note_type: 'blocker',
+                priority: selectedPriority === 'low' ? 'medium' : selectedPriority
+            };
+        }
+        return {
+            note_type: 'warning',
+            priority: selectedPriority
+        };
+    }
+
+    function getNoteVisualType(note) {
+        if (note.display_type_key) return note.display_type_key;
+        const rawType = (note.note_type || '').toLowerCase();
+        const rawPriority = (note.priority || '').toLowerCase();
+        if (rawType === 'blocker') return 'blocker';
+        if (rawType === 'warning' && rawPriority === 'high') return 'deprivation';
+        if (rawType === 'warning') return 'warning';
+        return 'info';
+    }
     
     // Lookup participant
     async function lookupParticipant(badgeId) {
@@ -579,7 +610,7 @@ usort($participantsList, function($a, $b) {
         const notesList = document.getElementById('notesList');
         if (notes.length > 0) {
             notesList.innerHTML = notes.map(n => `
-                <div class="note-item ${n.note_type}">
+                <div class="note-item ${getNoteVisualType(n)}">
                     <div class="note-header">
                         <span>${n.type_icon} ${n.type_label || n.note_type}</span>
                         <span>${new Date(n.created_at).toLocaleString('ar')}</span>
@@ -608,7 +639,8 @@ usort($participantsList, function($a, $b) {
             return;
         }
         
-        const priority = document.querySelector('input[name="priority"]:checked').value;
+        const selectedPriority = document.querySelector('input[name="priority"]:checked').value;
+        const mappedType = mapTypeForSubmit(selectedType, selectedPriority);
         const visibilityChecks = document.querySelectorAll('.visibility-checks input:checked');
         const visibility = Array.from(visibilityChecks).map(c => c.value);
         
@@ -618,8 +650,8 @@ usort($participantsList, function($a, $b) {
             const formData = new FormData();
             formData.append('badge_id', currentParticipant.badge_id);
             formData.append('note_text', noteText);
-            formData.append('note_type', selectedType);
-            formData.append('priority', priority);
+            formData.append('note_type', mappedType.note_type);
+            formData.append('priority', mappedType.priority);
             formData.append('visibility', JSON.stringify(visibility));
             formData.append('device', DEVICE_ID);
             
