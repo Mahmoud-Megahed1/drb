@@ -86,6 +86,22 @@ function showError($title, $message) {
     </html>
     <?php
 }
+
+function normalizeNoteVisualType($type, $priority = '') {
+    $rawType = strtolower(trim((string)$type));
+    $rawPriority = strtolower(trim((string)$priority));
+
+    if ($rawType === 'blocker') {
+        return ['key' => 'blocker', 'label' => 'منع'];
+    }
+    if ($rawType === 'warning' && $rawPriority === 'high') {
+        return ['key' => 'deprivation', 'label' => 'حرمان'];
+    }
+    if ($rawType === 'warning') {
+        return ['key' => 'warning', 'label' => 'تحذير'];
+    }
+    return ['key' => 'info', 'label' => 'ملاحظة'];
+}
 ?>
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
@@ -244,7 +260,17 @@ function showError($title, $message) {
         }
         .note-item.info { border-color: #17a2b8; }
         .note-item.warning { border-color: #ffc107; }
+        .note-item.deprivation { border-color: #ff6b35; }
         .note-item.blocker { border-color: #dc3545; }
+        .note-type-badge {
+            display: inline-block;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 12px;
+            margin-bottom: 6px;
+            background: rgba(255,255,255,0.14);
+        }
         
         /* Championships List */
         .championships-list {
@@ -413,8 +439,10 @@ function showError($title, $message) {
         <div class="notes-section">
             <h3>📝 ملاحظات إضافية</h3>
             <?php foreach ($visibleNotes as $note): ?>
-            <div class="note-item <?= $note['note_type'] ?>">
+            <?php $noteType = normalizeNoteVisualType($note['note_type'] ?? '', $note['priority'] ?? ''); ?>
+            <div class="note-item <?= htmlspecialchars($noteType['key']) ?>">
                 <div class="text">
+                    <div class="note-type-badge"><?= htmlspecialchars($noteType['label']) ?></div>
                     <?= htmlspecialchars($note['note_text']) ?>
                     <div style="font-size:10px;opacity:0.6;margin-top:4px">
                         <?= date('Y/m/d', strtotime($note['created_at'])) ?>
@@ -453,9 +481,9 @@ function showError($title, $message) {
             <div style="margin-bottom:10px">
                 <label>النوع</label>
                 <select id="modalType" style="width:100%;padding:8px;border-radius:5px;background:#333;color:white;border:1px solid #444">
-                    <option value="warning">تحذير (عام)</option>
-                    <option value="blocker">حظر (Blocker)</option>
-                    <option value="info">ملاحظة إدارية (معلومات)</option>
+                    <option value="warning">تحذير ⚠️</option>
+                    <option value="deprivation">حرمان ⛔</option>
+                    <option value="blocker">منع 🛑</option>
                 </select>
             </div>
             
@@ -485,10 +513,22 @@ function showError($title, $message) {
             btn.disabled = true;
             
             const data = new FormData();
+            const selectedType = document.getElementById('modalType').value;
+            let mappedType = 'warning';
+            let mappedPriority = 'medium';
+
+            if (selectedType === 'deprivation') {
+                mappedType = 'warning';
+                mappedPriority = 'high';
+            } else if (selectedType === 'blocker') {
+                mappedType = 'blocker';
+                mappedPriority = 'high';
+            }
+
             data.append('badge_id', document.getElementById('modalBadgeId').value);
-            data.append('note_type', document.getElementById('modalType').value);
+            data.append('note_type', mappedType);
             data.append('note_text', document.getElementById('modalText').value);
-            data.append('priority', 'high'); // Default to high for warnings
+            data.append('priority', mappedPriority);
             
             fetch('add_note.php', {
                 method: 'POST',

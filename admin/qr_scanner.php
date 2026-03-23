@@ -272,8 +272,8 @@ $user = getCurrentUser();
             <textarea id="violationText" placeholder="اكتب تفاصيل المخالفة..."></textarea>
             <select id="violationType">
                 <option value="warning">تحذير ⚠️</option>
-                <option value="blocker">إيقاف 🛑</option>
-                <option value="info">ملاحظة ℹ️</option>
+                <option value="deprivation">حرمان ⛔</option>
+                <option value="blocker">منع 🛑</option>
             </select>
             <select id="violationPriority">
                 <option value="low">عادي</option>
@@ -552,11 +552,28 @@ $user = getCurrentUser();
     function closeViolationModal() {
         document.getElementById('violationModal').classList.remove('visible');
     }
+
+    function mapViolationForSubmit(type, selectedPriority) {
+        if (type === 'deprivation') {
+            return { note_type: 'warning', priority: 'high' };
+        }
+        if (type === 'blocker') {
+            return {
+                note_type: 'blocker',
+                priority: selectedPriority === 'low' ? 'medium' : selectedPriority
+            };
+        }
+        return {
+            note_type: 'warning',
+            priority: selectedPriority
+        };
+    }
     
     async function submitViolation() {
         const text = document.getElementById('violationText').value.trim();
         const type = document.getElementById('violationType').value;
-        const priority = document.getElementById('violationPriority').value;
+        const selectedPriority = document.getElementById('violationPriority').value;
+        const mapped = mapViolationForSubmit(type, selectedPriority);
         
         if (!text) {
             alert('يرجى كتابة تفاصيل المخالفة');
@@ -572,8 +589,8 @@ $user = getCurrentUser();
             const formData = new FormData();
             formData.append('badge_id', currentBadgeId);
             formData.append('note_text', text);
-            formData.append('note_type', type);
-            formData.append('priority', priority);
+            formData.append('note_type', mapped.note_type);
+            formData.append('priority', mapped.priority);
             formData.append('device', 'qr_scanner');
             
             const resp = await fetch('../add_note.php', {

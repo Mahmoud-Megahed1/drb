@@ -435,6 +435,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $noteType = $_POST['note_type'] ?? 'info';
             $priority = $_POST['priority'] ?? 'low';
 
+            if ($noteType === 'deprivation') {
+                $noteType = 'warning';
+                $priority = 'high';
+            } elseif ($noteType === 'blocker' && $priority === 'low') {
+                $priority = 'medium';
+            }
+
             $stmt = $pdo->prepare("INSERT INTO notes (member_id, note_text, note_type, priority, created_by) VALUES (?, ?, ?, ?, ?)");
             $stmt->execute([$mid, $noteText, $noteType, $priority, $currentUser->id ?? null]);
 
@@ -744,6 +751,17 @@ $currentPage = 'member_details';
         }
         .photo-upload-label { cursor: pointer; margin: 0; }
         .photo-upload-label input { display: none; }
+        .note-card {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-right: 4px solid #17a2b8;
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        .note-card.warning { border-right-color: #ffc107; }
+        .note-card.deprivation { border-right-color: #ff6b35; }
+        .note-card.blocker { border-right-color: #dc3545; }
     </style>
 </head>
 <body>
@@ -1068,12 +1086,24 @@ $currentPage = 'member_details';
                         <p style="text-align: center; color: #999; padding: 20px;">لا توجد ملاحظات</p>
                     <?php else: ?>
                         <?php foreach ($notes as $n): ?>
-                        <div class="note-card <?= $n['note_type'] ?? 'info' ?>">
+                        <?php
+                        $noteTypeRaw = strtolower(trim((string)($n['note_type'] ?? 'info')));
+                        $notePriorityRaw = strtolower(trim((string)($n['priority'] ?? 'low')));
+                        $noteCardClass = $noteTypeRaw === 'blocker' ? 'blocker' : ($noteTypeRaw === 'warning' && $notePriorityRaw === 'high' ? 'deprivation' : ($noteTypeRaw === 'warning' ? 'warning' : 'info'));
+                        ?>
+                        <div class="note-card <?= $noteCardClass ?>">
                             <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                                 <div>
                                     <?php
-                                    $typeIcons = ['info' => 'ℹ️', 'warning' => '⚠️', 'blocker' => '🚫', 'positive' => '✅'];
-                                    echo $typeIcons[$n['note_type'] ?? 'info'] ?? 'ℹ️';
+                                    if ($noteTypeRaw === 'blocker') {
+                                        echo '🛑 منع';
+                                    } elseif ($noteTypeRaw === 'warning' && $notePriorityRaw === 'high') {
+                                        echo '⛔ حرمان';
+                                    } elseif ($noteTypeRaw === 'warning') {
+                                        echo '⚠️ تحذير';
+                                    } else {
+                                        echo '📝 ملاحظة';
+                                    }
                                     ?>
                                     <span id="note-text-<?= $n['id'] ?>"><?= htmlspecialchars($n['note_text'] ?? '') ?></span>
                                 </div>
@@ -1383,10 +1413,17 @@ $currentPage = 'member_details';
             <div class="form-group">
                 <label>نوع الملاحظة</label>
                 <select name="note_type" class="form-control">
-                    <option value="info">ℹ️ معلومة</option>
-                    <option value="positive">✅ إيجابية</option>
                     <option value="warning">⚠️ تحذير</option>
-                    <option value="blocker">🚫 حظر</option>
+                    <option value="deprivation">⛔ حرمان</option>
+                    <option value="blocker">🛑 منع</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>الأولوية</label>
+                <select name="priority" class="form-control" id="notePrioritySelect">
+                    <option value="low">عادي</option>
+                    <option value="medium" selected>متوسط</option>
+                    <option value="high">مهم</option>
                 </select>
             </div>
             <button type="submit" class="btn btn-info btn-block">إضافة الملاحظة</button>
@@ -1572,6 +1609,18 @@ $('#warningForm').on('submit', function(e) {
 // Note Form
 $('#noteForm').on('submit', function(e) {
     e.preventDefault();
+    const $form = $(this);
+    const $type = $form.find('select[name="note_type"]');
+    const $priority = $form.find('select[name="priority"]');
+    const selectedType = ($type.val() || '').toLowerCase();
+
+    if (selectedType === 'deprivation') {
+        $type.val('warning');
+        $priority.val('high');
+    } else if (selectedType === 'blocker' && $priority.val() === 'low') {
+        $priority.val('medium');
+    }
+
     $.post('member_details.php?id=<?= urlencode($memberId) ?>', $(this).serialize(), function(res) {
         if (res.success) {
             alert('✅ ' + res.message);

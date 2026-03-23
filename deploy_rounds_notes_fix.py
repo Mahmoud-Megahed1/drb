@@ -13,6 +13,10 @@ files_to_upload = [
     "admin/rounds_scanner.php",
     "admin/notes_scanner.php",
     "admin/view_notes.php",
+    "admin/qr_scanner.php",
+    "admin/member_details.php",
+    "profile.php",
+    "member_profile.php",
     "get_notes.php",
 ]
 

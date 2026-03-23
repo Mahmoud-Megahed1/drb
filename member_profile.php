@@ -104,6 +104,25 @@ foreach ($violations as $v) {
         break;
     }
 }
+
+function normalizeViolationDisplayType($type, $severity = '') {
+    $rawType = strtolower(trim((string)$type));
+    $rawSeverity = strtolower(trim((string)$severity));
+
+    if ($rawType === 'blocker') {
+        return ['key' => 'blocker', 'label' => 'منع 🛑'];
+    }
+
+    if ($rawType === 'deprivation' || ($rawType === 'warning' && $rawSeverity === 'high')) {
+        return ['key' => 'deprivation', 'label' => 'حرمان ⛔'];
+    }
+
+    if ($rawType === 'warning') {
+        return ['key' => 'warning', 'label' => 'تحذير ⚠️'];
+    }
+
+    return ['key' => 'info', 'label' => 'ملاحظة 📝'];
+}
 ?>
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
@@ -221,6 +240,8 @@ foreach ($violations as $v) {
             padding: 12px;
             margin-bottom: 10px;
         }
+        .violation-item.warning { background: #fff8e1; border-color: #ffecb3; }
+        .violation-item.deprivation { background: #fff3e0; border-color: #ffb74d; }
         .violation-item.blocker { background: #fed7d7; border-color: #fc8181; }
         .violation-item .type { font-size: 12px; color: #c53030; font-weight: bold; }
         .violation-item .desc { font-size: 13px; margin-top: 5px; }
@@ -365,8 +386,9 @@ foreach ($violations as $v) {
             <div class="info-section">
                 <h4><i class="fa-solid fa-triangle-exclamation" style="color:#dc3545"></i> ????????? ??????</h4>
                 <?php foreach ($violations as $v): ?>
-                <div class="violation-item <?= ($v['type'] ?? '') === 'blocker' ? 'blocker' : '' ?>">
-                    <div class="type"><?= ($v['type'] ?? '') === 'blocker' ? '?? ???' : '?? ?????' ?></div>
+                <?php $displayType = normalizeViolationDisplayType($v['type'] ?? '', $v['severity'] ?? ''); ?>
+                <div class="violation-item <?= htmlspecialchars($displayType['key']) ?>">
+                    <div class="type"><?= htmlspecialchars($displayType['label']) ?></div>
                     <div class="desc"><?= htmlspecialchars($v['description'] ?? '') ?></div>
                     <div class="meta">??????: <?= htmlspecialchars($v['added_by'] ?? '') ?> | <?= $v['added_at'] ?? '' ?></div>
                 </div>
