@@ -18,6 +18,7 @@ files_to_upload = [
     "profile.php",
     "member_profile.php",
     "get_notes.php",
+    "verify_round.php",
 ]
 
 

@@ -68,6 +68,7 @@ try {
     $participants = json_decode(file_get_contents($dataFile), true) ?? [];
     $participant = null;
     $pIndex = -1;
+    $matchedParticipants = [];
 
     // 4. Find Participant (Enhanced Search)
     foreach ($participants as $index => $p) {
@@ -81,13 +82,14 @@ try {
         ];
         
         if (in_array(strval($badge_id), $pParams, true)) {
-            $participant = $p;
-            $pIndex = $index;
-            break;
+            $matchedParticipants[] = [
+                'index' => $index,
+                'participant' => $p,
+            ];
         }
     }
 
-    if (!$participant) {
+    if (empty($matchedParticipants)) {
         $debugInfo = [
             'received_id' => $badge_id,
             'file_exists' => file_exists($dataFile),
@@ -97,6 +99,42 @@ try {
         scanLog("Participant Not Found for ID: $badge_id");
         throw new ApiException('PARTICIPANT_NOT_FOUND', $debugInfo);
     }
+
+    // When multiple records match the same badge/token across edits/championships,
+    // choose the most relevant one (approved + allowed type + latest timestamp).
+    $allowedTypes = ['المشاركة بالاستعراض الحر', 'free_show'];
+    $best = null;
+    $bestScore = -1;
+
+    foreach ($matchedParticipants as $candidate) {
+        $p = $candidate['participant'];
+        $isApproved = ($p['status'] ?? '') === 'approved';
+        $pType = $p['participation_type'] ?? '';
+        $isAllowedType = in_array($pType, $allowedTypes, true);
+
+        $ts = 0;
+        foreach (['approved_date', 'registration_date', 'created_at'] as $timeKey) {
+            if (!empty($p[$timeKey])) {
+                $parsed = strtotime((string)$p[$timeKey]);
+                if ($parsed !== false && $parsed > $ts) {
+                    $ts = $parsed;
+                }
+            }
+        }
+
+        $score = ($isApproved ? 1000000000 : 0)
+               + ($isAllowedType ? 500000000 : 0)
+               + $ts;
+
+        if ($score > $bestScore) {
+            $bestScore = $score;
+            $best = $candidate;
+        }
+    }
+
+    $participant = $best['participant'] ?? null;
+    $pIndex = $best['index'] ?? -1;
+
     scanLog("Participant Found: " . $participant['wasel']);
 
     if (($participant['status'] ?? '') !== 'approved') {
@@ -105,7 +143,6 @@ try {
 
     // NEW: 4.b Check Participation Type
     $pType = $participant['participation_type'] ?? '';
-    $allowedTypes = ['المشاركة بالاستعراض الحر', 'free_show'];
     
     if (!in_array($pType, $allowedTypes)) {
         $msg = "عذراً - نوع مشاركتك ($pType) لا يسمح لك بدخول جولات الاستعراض";
