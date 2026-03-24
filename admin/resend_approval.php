@@ -1,7 +1,7 @@
 <?php
 /**
  * Resend Approval Messages - إعادة إرسال رسائل القبول
- * يرسل صورة القبول وباج الدخول للمسجلين المقبولين
+ * يرسل رسالة موحدة (قبول + باج) للمسجلين المقبولين
  */
 session_start();
 header('Content-Type: application/json');
@@ -51,7 +51,7 @@ if (($registration['status'] ?? '') !== 'approved') {
 require_once '../wasender.php';
 $wasender = new WaSender();
 
-$results = ['acceptance' => null, 'badge' => null];
+$results = ['unified' => null];
 
 try {
     // Get protocol and host
@@ -139,37 +139,27 @@ try {
     // Extract name safely
     $personName = $registration['full_name'] ?? $registration['name'] ?? 'مشترك';
     
-    // Send TEXT MESSAGE ONLY (No Image) to prevent encoding issues
-    $results['acceptance'] = $wasender->sendMessage($registration['phone'], $acceptCaption, $countryCode, [
-        'type' => 'acceptance',
-        'name' => $personName,
-        'wasel' => $registration['wasel']
-    ]);
-    
-    // No need to sleep here! The background worker automatically enforces a 7-second delay between queued messages.
-    // Sleeping here just delays the AJAX response to the browser and risks a timeout.
-    
-    // --- 2. SEND QR BADGE ---
     $badgeLink = $baseUrl . '/badge.php?token=' . urlencode($badgeToken);
     $verifyUrl = $baseUrl . '/verify_entry.php?badge_id=' . urlencode($badgeId) . '&action=checkin';
     $qrCodeUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=' . urlencode($verifyUrl);
-    
-    $badgeCaption = $messageTemplates['badge_caption'] ?? "🎫 باج دخول الحلبة";
-    $badgeCaption = str_replace('{name}', $personName, $badgeCaption);
-    $badgeCaption = str_replace('{wasel}', $registration['wasel'] ?? '', $badgeCaption);
-    $badgeCaption = str_replace('{registration_code}', $registration['registration_code'] ?? '', $badgeCaption);
-    $badgeCaption .= "\n\n🎫 افتح الباج الكامل:\n" . $badgeLink;
-    
-    // Send QR code image using WaSender class
-    $results['badge'] = $wasender->sendImage($registration['phone'], $qrCodeUrl, $badgeCaption, $countryCode, [
-        'type' => 'badge',
+
+    $unifiedCaption = $acceptCaption;
+    $unifiedCaption .= "\n\n🎫 *باج الدخول (QR):*\n" . $qrCodeUrl;
+    $unifiedCaption .= "\n📥 *الباج الكامل:*\n" . $badgeLink;
+    if (!empty($registration['registration_code'])) {
+        $unifiedCaption .= "\n\n🔑 *الكود الدائم:* " . $registration['registration_code'];
+        $unifiedCaption .= "\n📌 _احتفظ بهذا الكود واستخدمه في التسجيلات القادمة_";
+    }
+
+    $results['unified'] = $wasender->sendMessage($registration['phone'], $unifiedCaption, $countryCode, [
+        'type' => 'approval_badge_unified',
         'name' => $personName,
         'wasel' => $registration['wasel']
     ]);
     
     echo json_encode([
         'success' => true,
-        'message' => 'تم إعادة وضع الرسائل في الطابور لإرسالها',
+        'message' => 'تمت إعادة وضع الرسالة الموحدة في الطابور',
         'results' => $results,
         'badge_url' => $badgeLink,
         'image_url' => $acceptanceImageUrl,

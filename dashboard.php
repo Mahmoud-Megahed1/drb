@@ -58,13 +58,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                         $result = null;
                         $success = false;
                         if ($messageType === 'welcome') {
-                            $result = sendRegistrationReceivedWhatsApp($item);
-                            $success = $result['success'] ?? false;
-                            $message = 'تم إعادة إرسال رسالة الترحيب';
-                            if (!$success && isset($result['error'])) {
-                                $message = 'خطأ: ' . $result['error'];
-                            }
-                            echo json_encode(['success' => $success, 'message' => $message]);
+                            echo json_encode([
+                                'success' => false,
+                                'message' => 'تم إيقاف رسالة التسجيل الترحيبية ضمن النظام الحالي'
+                            ]);
                         } else {
                             echo json_encode(['success' => false, 'message' => 'نوع الرسالة غير صحيح']);
                         }

@@ -10,10 +10,10 @@ $messagesFile = 'data/whatsapp_messages.json';
 
 // Default messages - Updated with latest features
 $defaultMessages = [
-    'registration_message' => "🏎️ *نادي بلاد الرافدين 2025*\n━━━━━━━━━━━━━━━\n📋 *تم استلام طلب التسجيل!*\n\n🔢 *رقم الطلب:* #{wasel}\n👤 *الاسم:* {name}\n🚗 *السيارة:* {car_type}\n\n⏳ سيتم مراجعة طلبك وإرسال رسالة لك عند القبول\n━━━━━━━━━━━━━━━\n\n🔑 *كود التسجيل السريع:*\n`{registration_code}`\n📌 _احتفظ بهذا الكود للتسجيل السريع في البطولات القادمة_",
-    'acceptance_message' => "🎉 *مبروك! تم قبول طلبك!*\n━━━━━━━━━━━━━━━\n\n👤 *الاسم:* {name}\n🔢 *رقم التسجيل:* #{wasel}\n🚗 *السيارة:* {car_type}\n\n✅ احتفظ بهذه الصورة وأظهرها عند دخول الحلبة\n\n🏆 نراك في الحلبة!\n━━━━━━━━━━━━━━━",
+    'registration_message' => "(معطلة) تم إيقاف رسالة التسجيل الترحيبية لمنع تكرار الرسائل",
+    'acceptance_message' => "🎉 *مبروك! تم قبول طلبك!*\n━━━━━━━━━━━━━━━\n\n👤 *الاسم:* {name}\n🔢 *رقم التسجيل:* #{wasel}\n🚗 *السيارة:* {car_type}\n\n✅ تم اعتماد مشاركتك بنجاح\n━━━━━━━━━━━━━━━",
     'rejection_message' => "😔 *نأسف، تم رفض طلبك*\n━━━━━━━━━━━━━━━\n\n👤 *الاسم:* {name}\n🚗 *السيارة:* {car_type}\n\n❌ *السبب:* {reason}\n\n📞 للاستفسار تواصل معنا\n━━━━━━━━━━━━━━━",
-    'badge_caption' => "🎫 باج دخول الحلبة\n\n✅ قم بإظهار هذا الباج عند الدخول للحلبة\n\n🔑 كود التسجيل: {registration_code}",
+    'badge_caption' => "🎫 باج دخول الحلبة\n\n📱 امسح QR عند الدخول\n\n🔑 كود التسجيل: {registration_code}",
     'activation_message' => "🏎️ *تفعيل حسابك في نادي بلاد الرافدين*\n━━━━━━━━━━━━━━━\n\n✅ *تم تفعيل حسابك بنجاح!*\n\n👤 *الاسم:* {name}\n🔢 *الكود الدائم:* {permanent_code}\n\n📌 _يمكنك استخدام هذا الكود للتسجيل السريع في جميع البطولات القادمة_\n\n🏆 نراك في الحلبة!\n━━━━━━━━━━━━━━━"
 ];
 
@@ -193,8 +193,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         <!-- Registration Message -->
         <div class="card">
-            <h3><i class="fa-solid fa-file-contract"></i> رسالة التسجيل (عند استلام الطلب)</h3>
-            <p>تُرسل للعميل عند تقديم طلب التسجيل + كود التسجيل السريع</p>
+            <h3><i class="fa-solid fa-file-contract"></i> رسالة التسجيل (معطلة)</h3>
+            <p>تم إيقافها لتفادي تكرار الرسائل. لن يتم إرسالها من التدفق الحالي.</p>
             <textarea name="registration_message" rows="8"><?= htmlspecialchars($messages['registration_message']) ?></textarea>
             <div class="variables">
                 <strong>المتغيرات المتاحة:</strong>

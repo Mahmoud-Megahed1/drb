@@ -409,9 +409,6 @@ try {
             $imageUrl = $protocol . '://' . $host . '/' . str_replace('../', '', $filepath);
             $imageUrl = str_replace('\\', '/', $imageUrl);
             
-            // Send acceptance image
-            $whatsappResult = $wasender->sendAcceptanceWithImage($foundReg, $imageUrl);
-            
             // Generate entry badge IMAGE with circular personal photo
             $badgeOutputDir = '../uploads/badges/';
             if (!file_exists($badgeOutputDir)) {
@@ -421,40 +418,42 @@ try {
             // Include badge generator function
             $badgeFilename = generateBadgeImage($foundReg, $badgeOutputDir);
             
-            if ($badgeFilename) {
-                // Generate full URL for badge image
-                $badgeUrl = $protocol . '://' . $host . '/uploads/badges/' . $badgeFilename;
-                $badgeUrl = str_replace('\\', '/', $badgeUrl);
-                
-                // Send badge image with caption
-                $badgeCaption = "🎫 باج دخول الحلبة\n\n✅ قم بإظهار هذا الباج عند الدخول للحلبة";
-                if (!empty($foundReg['registration_code'])) {
-                    $badgeCaption .= "\n\n🔑 كود التسجيل السريع: " . $foundReg['registration_code'];
-                }
-                
-                $countryCode = $foundReg['country_code'] ?? '+964';
-                $badgeResult = $wasender->sendImage($foundReg['phone'], $badgeUrl, $badgeCaption, $countryCode, [
-                    'type' => 'badge',
-                    'name' => $foundReg['full_name'] ?? 'مشترك',
-                    'wasel' => $foundReg['wasel'] ?? ''
-                ]);
-            } else {
-                // Fallback to text message if image generation fails
-                $badgeMessage = "🎫 *باج دخول الحلبة*\n━━━━━━━━━━━━━━━\n\n";
-                $badgeMessage .= "🔢 *رقم التسجيل:* #" . $foundReg['wasel'] . "\n\n";
-                $badgeMessage .= "👤 *الاسم:* " . ($foundReg['full_name'] ?? '') . "\n";
-                $badgeMessage .= "📱 *الهاتف:* " . ($foundReg['phone'] ?? '') . "\n";
-                $badgeMessage .= "📍 *المحافظة:* " . ($foundReg['governorate'] ?? '') . "\n\n";
-                $badgeMessage .= "🚗 *السيارة:* " . ($foundReg['car_type'] ?? '') . " " . ($foundReg['car_year'] ?? '') . "\n";
-                $badgeMessage .= "🪪 *اللوحة:* " . ($foundReg['plate_full'] ?? '') . "\n\n";
-                if (!empty($foundReg['registration_code'])) {
-                    $badgeMessage .= "🔑 *كود التسجيل:* " . $foundReg['registration_code'] . "\n";
-                }
-                $badgeMessage .= "\n✅ *قم بإظهار هذا الباج عند الدخول*";
-                
-                $countryCode = $foundReg['country_code'] ?? '+964';
-                $badgeResult = $wasender->sendMessage($foundReg['phone'], $badgeMessage, $countryCode);
+            $badgeLink = $protocol . '://' . $host . '/badge.php?token=' . urlencode($foundReg['badge_token'] ?? $foundReg['session_badge_token'] ?? $foundReg['registration_code'] ?? '');
+            $verifyUrl = $protocol . '://' . $host . '/verify_entry.php?badge_id=' . urlencode($foundReg['badge_id'] ?? $foundReg['registration_code'] ?? $foundReg['wasel'] ?? '') . '&action=checkin';
+            $qrCodeUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' . urlencode($verifyUrl);
+
+            $messagesFile = __DIR__ . '/data/whatsapp_messages.json';
+            $templates = [];
+            if (file_exists($messagesFile)) {
+                $templates = json_decode(file_get_contents($messagesFile), true) ?? [];
             }
+
+            $unifiedCaption = $templates['acceptance_message'] ?? "🎉 *مبروك! تم قبول طلبك!*\n\n👤 {name}\n🔢 #{wasel}\n🚗 {car_type}";
+            $unifiedCaption = str_replace(
+                ['{name}', '{wasel}', '{car_type}', '{plate}', '{registration_code}'],
+                [
+                    $foundReg['full_name'] ?? 'مشترك',
+                    $foundReg['wasel'] ?? '',
+                    $foundReg['car_type'] ?? '',
+                    $foundReg['plate_full'] ?? '',
+                    $foundReg['registration_code'] ?? ''
+                ],
+                $unifiedCaption
+            );
+            $unifiedCaption .= "\n\n🎫 *باج الدخول (QR):*\n" . $qrCodeUrl;
+            $unifiedCaption .= "\n📥 *الباج الكامل:*\n" . $badgeLink;
+            if (!empty($foundReg['registration_code'])) {
+                $unifiedCaption .= "\n\n🔑 *الكود الدائم:* " . $foundReg['registration_code'];
+                $unifiedCaption .= "\n📌 _احتفظ بهذا الكود واستخدمه في التسجيلات القادمة_";
+            }
+
+            $countryCode = $foundReg['country_code'] ?? '+964';
+            $whatsappResult = $wasender->sendMessage($foundReg['phone'], $unifiedCaption, $countryCode, [
+                'type' => 'approval_badge_unified',
+                'name' => $foundReg['full_name'] ?? 'مشترك',
+                'wasel' => $foundReg['wasel'] ?? ''
+            ]);
+            $badgeResult = $whatsappResult;
             
         } catch (Exception $e) {
             $whatsappResult = ['success' => false, 'error' => $e->getMessage()];

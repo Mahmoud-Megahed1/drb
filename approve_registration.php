@@ -142,7 +142,7 @@ exit;
  */
 function handleApproval(&$data, $index, $registration, $messageOptions = []) {
     // Default message options (all enabled)
-    $sendRegistration = $messageOptions['send_registration'] ?? 1;
+    $sendRegistration = $messageOptions['send_registration'] ?? 0;
     $sendAcceptance = $messageOptions['send_acceptance'] ?? 1;
     $sendBadge = $messageOptions['send_badge'] ?? 1;
     
@@ -258,17 +258,12 @@ function handleApproval(&$data, $index, $registration, $messageOptions = []) {
             $messageTemplates = json_decode(file_get_contents($messagesFile), true) ?? [];
         }
         
-        if ($sendAcceptance) {
+        if ($sendAcceptance || $sendBadge) {
             $acceptCaption = $messageTemplates['acceptance_message'] ?? "🎉 *مبروك! تم قبول طلبك!*\n\n👤 {name}\n🔢 #{wasel}\n🚗 {car_type}";
             $acceptCaption = str_replace(['{name}', '{wasel}', '{car_type}', '{plate}', '{registration_code}'],
                 [$registration['full_name'] ?? '', $registration['wasel'] ?? '', $registration['car_type'] ?? '', $registration['plate_full'] ?? '', $registration['registration_code'] ?? ''],
                 $acceptCaption);
-            $acceptCaption .= "\n\n🌐 *رابط بطاقة القبول:* \n" . $acceptanceLink;
-            $acceptResult = $waSender->sendMessage($registration['phone'], $acceptCaption, $registration['country_code'] ?? '+964', ['type' => 'acceptance', 'name' => $registration['full_name'] ?? '', 'wasel' => $registration['wasel'] ?? '']);
-            $processLog[] = ($acceptResult['success'] ?? false) ? 'Accept: Queued' : 'Accept: FAILED - ' . ($acceptResult['error'] ?? 'unknown');
-        }
-        
-        if ($sendBadge) {
+
             $badgeId = $data[$index]['badge_id'] ?? $registration['wasel'];
             $verifyUrl = $baseUrl . '/verify_entry.php?badge_id=' . urlencode($badgeId) . '&action=checkin';
             $badgeLink = $baseUrl . '/badge.php?token=' . urlencode($badgeToken);
@@ -278,10 +273,26 @@ function handleApproval(&$data, $index, $registration, $messageOptions = []) {
             $badgeCaption = str_replace(['{name}', '{wasel}', '{registration_code}'],
                 [$registration['full_name'] ?? '', $registration['wasel'] ?? '', $registration['registration_code'] ?? ''],
                 $badgeCaption);
-            $badgeCaption .= "\n\n📥 *افتح الباج الكامل:*\n" . $badgeLink;
-            
-            $badgeResult = $waSender->sendImage($registration['phone'], $qrCodeUrl, $badgeCaption, $registration['country_code'] ?? '+964', ['type' => 'badge', 'name' => $registration['full_name'] ?? '', 'wasel' => $registration['wasel'] ?? '']);
-            $processLog[] = ($badgeResult['success'] ?? false) ? 'Badge: Queued' : 'Badge: FAILED - ' . ($badgeResult['error'] ?? 'unknown');
+
+            $unifiedCaption = $acceptCaption;
+            $unifiedCaption .= "\n\n🎫 *باج الدخول (QR):*\n" . $qrCodeUrl;
+            $unifiedCaption .= "\n📥 *الباج الكامل:*\n" . $badgeLink;
+            if (!empty($registration['registration_code'])) {
+                $unifiedCaption .= "\n\n🔑 *الكود الدائم:* " . $registration['registration_code'];
+                $unifiedCaption .= "\n📌 _احتفظ بهذا الكود واستخدمه في التسجيلات القادمة_";
+            }
+
+            $unifiedResult = $waSender->sendMessage(
+                $registration['phone'],
+                $unifiedCaption,
+                $registration['country_code'] ?? '+964',
+                [
+                    'type' => 'approval_badge_unified',
+                    'name' => $registration['full_name'] ?? '',
+                    'wasel' => $registration['wasel'] ?? ''
+                ]
+            );
+            $processLog[] = ($unifiedResult['success'] ?? false) ? 'Unified: Queued' : 'Unified: FAILED - ' . ($unifiedResult['error'] ?? 'unknown');
         }
     } catch (\Throwable $e) {
         $processLog[] = 'WA: ' . $e->getMessage();
