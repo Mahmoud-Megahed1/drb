@@ -11,7 +11,7 @@ $messagesFile = 'data/whatsapp_messages.json';
 // Default messages - Updated with latest features
 $defaultMessages = [
     'registration_message' => "(معطلة) تم إيقاف رسالة التسجيل الترحيبية لمنع تكرار الرسائل",
-    'acceptance_message' => "🎉 *مبروك! تم قبول طلبك!*\n━━━━━━━━━━━━━━━\n\n👤 *الاسم:* {name}\n🔢 *رقم التسجيل:* #{wasel}\n🚗 *السيارة:* {car_type}\n\n✅ تم اعتماد مشاركتك بنجاح\n━━━━━━━━━━━━━━━",
+    'acceptance_message' => "🎉 *مبروك! تم قبول طلبك!*\n━━━━━━━━━━━━━━━\n\n👤 *الاسم:* {name}\n🔢 *رقم التسجيل:* #{wasel}\n🚗 *السيارة:* {car_type}\n\n✅ تم اعتماد مشاركتك بنجاح\n\n🎫 *باج الدخول (QR):*\n{qr_url}\n📥 *الباج الكامل:*\n{badge_link}\n🌐 *رابط بطاقة القبول:*\n{acceptance_link}\n\n🔑 *الكود الدائم:* {registration_code}\n📌 _احتفظ بهذا الكود واستخدمه في التسجيلات القادمة_\n━━━━━━━━━━━━━━━",
     'rejection_message' => "😔 *نأسف، تم رفض طلبك*\n━━━━━━━━━━━━━━━\n\n👤 *الاسم:* {name}\n🚗 *السيارة:* {car_type}\n\n❌ *السبب:* {reason}\n\n📞 للاستفسار تواصل معنا\n━━━━━━━━━━━━━━━",
     'badge_caption' => "🎫 باج دخول الحلبة\n\n📱 امسح QR عند الدخول\n\n🔑 كود التسجيل: {registration_code}",
     'activation_message' => "🏎️ *تفعيل حسابك في نادي بلاد الرافدين*\n━━━━━━━━━━━━━━━\n\n✅ *تم تفعيل حسابك بنجاح!*\n\n👤 *الاسم:* {name}\n🔢 *الكود الدائم:* {permanent_code}\n\n📌 _يمكنك استخدام هذا الكود للتسجيل السريع في جميع البطولات القادمة_\n\n🏆 نراك في الحلبة!\n━━━━━━━━━━━━━━━"
@@ -24,6 +24,25 @@ if (file_exists($messagesFile)) {
     if ($savedMessages) {
         $messages = array_merge($defaultMessages, $savedMessages);
     }
+}
+
+// Normalize old acceptance templates to show full unified content in settings UI.
+// Runtime sender is already safe, but this keeps admin page aligned with actual unified message.
+if (!empty($messages['acceptance_message'])) {
+    $tpl = (string)$messages['acceptance_message'];
+    if (strpos($tpl, '{qr_url}') === false) {
+        $tpl .= "\n\n🎫 *باج الدخول (QR):*\n{qr_url}";
+    }
+    if (strpos($tpl, '{badge_link}') === false) {
+        $tpl .= "\n📥 *الباج الكامل:*\n{badge_link}";
+    }
+    if (strpos($tpl, '{acceptance_link}') === false) {
+        $tpl .= "\n🌐 *رابط بطاقة القبول:*\n{acceptance_link}";
+    }
+    if (strpos($tpl, '{registration_code}') === false) {
+        $tpl .= "\n\n🔑 *الكود الدائم:* {registration_code}\n📌 _احتفظ بهذا الكود واستخدمه في التسجيلات القادمة_";
+    }
+    $messages['acceptance_message'] = $tpl;
 }
 
 // Handle form submission
@@ -212,7 +231,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <textarea name="acceptance_message" rows="6"><?= htmlspecialchars($messages['acceptance_message']) ?></textarea>
             <div class="variables">
                 <strong>المتغيرات المتاحة:</strong>
-                <code>{wasel}</code> <code>{name}</code> <code>{car_type}</code> <code>{plate}</code> <code>{registration_code}</code>
+                <code>{wasel}</code> <code>{name}</code> <code>{car_type}</code> <code>{plate}</code> <code>{registration_code}</code> <code>{qr_url}</code> <code>{badge_link}</code> <code>{acceptance_link}</code>
             </div>
         </div>
         
