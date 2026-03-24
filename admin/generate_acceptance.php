@@ -422,36 +422,19 @@ try {
             $verifyUrl = $protocol . '://' . $host . '/verify_entry.php?badge_id=' . urlencode($foundReg['badge_id'] ?? $foundReg['registration_code'] ?? $foundReg['wasel'] ?? '') . '&action=checkin';
             $qrCodeUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' . urlencode($verifyUrl);
 
-            $messagesFile = __DIR__ . '/data/whatsapp_messages.json';
-            $templates = [];
-            if (file_exists($messagesFile)) {
-                $templates = json_decode(file_get_contents($messagesFile), true) ?? [];
-            }
-
-            $unifiedCaption = $templates['acceptance_message'] ?? "🎉 *مبروك! تم قبول طلبك!*\n\n👤 {name}\n🔢 #{wasel}\n🚗 {car_type}";
-            $unifiedCaption = str_replace(
-                ['{name}', '{wasel}', '{car_type}', '{plate}', '{registration_code}'],
-                [
-                    $foundReg['full_name'] ?? 'مشترك',
-                    $foundReg['wasel'] ?? '',
-                    $foundReg['car_type'] ?? '',
-                    $foundReg['plate_full'] ?? '',
-                    $foundReg['registration_code'] ?? ''
-                ],
-                $unifiedCaption
-            );
-            $unifiedCaption .= "\n\n🎫 *باج الدخول (QR):*\n" . $qrCodeUrl;
-            $unifiedCaption .= "\n📥 *الباج الكامل:*\n" . $badgeLink;
-            if (!empty($foundReg['registration_code'])) {
-                $unifiedCaption .= "\n\n🔑 *الكود الدائم:* " . $foundReg['registration_code'];
-                $unifiedCaption .= "\n📌 _احتفظ بهذا الكود واستخدمه في التسجيلات القادمة_";
-            }
-
             $countryCode = $foundReg['country_code'] ?? '+964';
-            $whatsappResult = $wasender->sendMessage($foundReg['phone'], $unifiedCaption, $countryCode, [
-                'type' => 'approval_badge_unified',
-                'name' => $foundReg['full_name'] ?? 'مشترك',
-                'wasel' => $foundReg['wasel'] ?? ''
+            $whatsappResult = $wasender->sendUnifiedApprovalMessage([
+                'phone' => $foundReg['phone'] ?? '',
+                'country_code' => $countryCode,
+                'wasel' => $foundReg['wasel'] ?? '',
+                'full_name' => $foundReg['full_name'] ?? 'مشترك',
+                'car_type' => $foundReg['car_type'] ?? '',
+                'plate_full' => $foundReg['plate_full'] ?? '',
+                'registration_code' => $foundReg['registration_code'] ?? ''
+            ], [
+                'qr_url' => $qrCodeUrl,
+                'badge_link' => $badgeLink,
+                'acceptance_link' => $protocol . '://' . $host . '/acceptance.php?token=' . urlencode($foundReg['badge_token'] ?? $foundReg['session_badge_token'] ?? $foundReg['registration_code'] ?? '')
             ]);
             $badgeResult = $whatsappResult;
             

@@ -128,9 +128,9 @@ $qrOnlyMode = ($valQr === false) ? false : ($valQr === 'true' || $valQr === '1')
 
 // Build global message prefs (used for Quick Approve)
 $globalMsgPrefs = [
-    'send_registration' => 0,  // Usually already sent for form registrations
-    'send_acceptance' => 1,    // Always send acceptance
-    'send_badge' => $badgesEnabled && !$qrOnlyMode ? 1 : 0,  // Send badge if enabled and not QR-only
+    'send_registration' => 0,
+    'send_acceptance' => 1,
+    'send_badge' => 1,
     'send_qr_only' => $qrOnlyMode ? 1 : 0  // Send QR only if QR mode is on
 ];
 $globalMsgPrefsJson = json_encode($globalMsgPrefs, JSON_HEX_APOS | JSON_HEX_QUOT);
@@ -851,8 +851,8 @@ if (empty($participationLabels)) {
                         // Load message templates
                         $messagesFile = 'admin/data/whatsapp_messages.json';
                         $defaultMessages = [
-                            'registration_message' => "🏎️ *تسجيل سيارات الاستعراض الحر*\n━━━━━━━━━━━━━━━\n📋 *تم حجز طلبك بنجاح!*\n\n🔢 *رقم الطلب:* {wasel}\n👤 *الاسم:* {name}\n🚗 *السيارة:* {car_type}\n\n⏳ *سيتم التواصل معك قريباً لتأكيد الطلب*\n━━━━━━━━━━━━━━━",
-                            'acceptance_message' => "🏎️ *تم تأكيد اشتراكك في البطولة!*\n\n🔢 *رقم التسجيل:* {wasel}\n👤 *الاسم:* {name}\n🚗 *السيارة:* {car_type}\n\n✅ مبروك! تم قبول سيارتك للمشاركة\n📍 يرجى الالتزام بالقوانين والتعليمات"
+                            'registration_message' => "(معطلة) تم إيقاف رسالة التسجيل الترحيبية لمنع تكرار الرسائل",
+                            'acceptance_message' => "🎉 *مبروك! تم قبول طلبك!*\n━━━━━━━━━━━━━━━\n\n👤 *الاسم:* {name}\n🔢 *رقم التسجيل:* #{wasel}\n🚗 *السيارة:* {car_type}\n\n✅ تم اعتماد مشاركتك بنجاح\n\n🎫 *باج الدخول (QR):*\n{qr_url}\n📥 *الباج الكامل:*\n{badge_link}\n\n🔑 *الكود الدائم:* {registration_code}\n📌 _احتفظ بهذا الكود واستخدمه في التسجيلات القادمة_\n━━━━━━━━━━━━━━━"
                         ];
                         $whatsappMessages = $defaultMessages;
                         if (file_exists($messagesFile)) {
@@ -864,17 +864,10 @@ if (empty($participationLabels)) {
                         ?>
                         
                         <div class="row">
-                            <div class="col-md-6">
+                            <div class="col-md-12">
                                 <div class="form-group">
-                                    <label><strong>📨 رسالة التسجيل (عند تقديم الطلب)</strong></label>
-                                    <p class="text-muted small">المتغيرات المتاحة: {wasel} = رقم الطلب, {name} = الاسم, {car_type} = نوع السيارة</p>
-                                    <textarea class="form-control" id="registration_message" rows="8" style="direction: rtl;"><?= htmlspecialchars($whatsappMessages['registration_message']) ?></textarea>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="form-group">
-                                    <label><strong>✅ رسالة القبول (عند الموافقة)</strong></label>
-                                    <p class="text-muted small">المتغيرات المتاحة: {wasel} = رقم الطلب, {name} = الاسم, {car_type} = نوع السيارة</p>
+                                    <label><strong>✅ الرسالة الموحدة (قبول + باج)</strong></label>
+                                    <p class="text-muted small">المتغيرات المتاحة: {wasel} {name} {car_type} {plate} {registration_code} (روابط QR والباج تُضاف تلقائياً)</p>
                                     <textarea class="form-control" id="acceptance_message" rows="8" style="direction: rtl;"><?= htmlspecialchars($whatsappMessages['acceptance_message']) ?></textarea>
                                 </div>
                             </div>
@@ -902,58 +895,6 @@ if (empty($participationLabels)) {
             </div>
             <div class="modal-body text-center">
                 <img id="modalImage" src="" class="modal-image">
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Custom Approval Modal -->
-<div class="modal fade" id="approveModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header" style="background: linear-gradient(135deg, #28a745 0%, #218838 100%); color: white;">
-                <button type="button" class="close" data-dismiss="modal" style="color:white">&times;</button>
-                <h4 class="modal-title">⚙️ خيارات القبول</h4>
-            </div>
-            <div class="modal-body">
-                <input type="hidden" id="approveWasel">
-                <p class="text-muted">اختر الرسائل التي تريد إرسالها للمشترك:</p>
-                
-                <div class="checkbox">
-                    <label style="font-size:16px">
-                        <input type="checkbox" id="opt_registration"> 
-                        📋 رسالة استلام التسجيل
-                    </label>
-                </div>
-                
-                <div class="checkbox">
-                    <label style="font-size:16px">
-                        <input type="checkbox" id="opt_acceptance"> 
-                        ✅ رسالة القبول (مع صورة Frame)
-                    </label>
-                </div>
-                
-                <div class="checkbox">
-                    <label style="font-size:16px">
-                        <input type="checkbox" id="opt_badge"> 
-                        🎫 رسالة الباج الكامل
-                    </label>
-                </div>
-                
-                <hr>
-                
-                <div class="checkbox" style="background:#e3f2fd;padding:10px;border-radius:5px">
-                    <label style="font-size:16px;color:#1565c0">
-                        <input type="checkbox" id="opt_qr_only"> 
-                        📲 <strong>QR فقط</strong> (كود دخول سريع بدون باج كامل)
-                    </label>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-default" data-dismiss="modal">إلغاء</button>
-                <button type="button" class="btn btn-success btn-lg" onclick="confirmCustomApproval()">
-                    ✅ قبول وإرسال
-                </button>
             </div>
         </div>
     </div>
@@ -1005,36 +946,20 @@ if (empty($participationLabels)) {
             </div>
             <div class="modal-body">
                 <input type="hidden" id="approveWasel">
-                <p class="text-muted">اختر الرسائل التي تريد إرسالها للمشترك:</p>
+                <p class="text-muted">التدفق الحالي يستخدم رسالة موحدة واحدة (قبول + باج).</p>
                 
                 <div class="checkbox" style="background: #f8f9fa; padding: 10px; border-radius: 8px; margin-bottom: 10px;">
                     <label style="font-weight: 600;">
-                        <input type="checkbox" id="msg_registration" checked> 
-                        📝 رسالة تأكيد التسجيل
-                        <small class="text-muted" style="display: block; margin-right: 25px;">رسالة تأكيد استلام طلب التسجيل</small>
-                    </label>
-                </div>
-                
-                <div class="checkbox" style="background: #f8f9fa; padding: 10px; border-radius: 8px; margin-bottom: 10px;">
-                    <label style="font-weight: 600;">
-                        <input type="checkbox" id="msg_acceptance" checked> 
-                        🎉 رسالة القبول مع الصورة
-                        <small class="text-muted" style="display: block; margin-right: 25px;">صورة القبول ورسالة مبروك تم قبولك</small>
-                    </label>
-                </div>
-                
-                <div class="checkbox" style="background: #f8f9fa; padding: 10px; border-radius: 8px; margin-bottom: 10px;">
-                    <label style="font-weight: 600;">
-                        <input type="checkbox" id="msg_badge" checked> 
-                        🎫 رسالة البادج/QR
-                        <small class="text-muted" style="display: block; margin-right: 25px;">رابط البادج مع كود QR للدخول</small>
+                        <input type="checkbox" id="opt_unified" checked> 
+                        ✅ الرسالة الموحدة (قبول + باج + كود دائم)
+                        <small class="text-muted" style="display: block; margin-right: 25px;">يتم إرسال رسالة واحدة فقط بدل رسالتين</small>
                     </label>
                 </div>
                 
                 <div class="text-center" style="margin-top: 15px;">
-                    <button type="button" class="btn btn-xs btn-link" onclick="$('#msg_registration, #msg_acceptance, #msg_badge').prop('checked', true)">تحديد الكل</button>
+                    <button type="button" class="btn btn-xs btn-link" onclick="$('#opt_unified').prop('checked', true)">تحديد</button>
                     |
-                    <button type="button" class="btn btn-xs btn-link text-danger" onclick="$('#msg_registration, #msg_acceptance, #msg_badge').prop('checked', false)">إلغاء الكل</button>
+                    <button type="button" class="btn btn-xs btn-link text-danger" onclick="$('#opt_unified').prop('checked', false)">إلغاء</button>
                 </div>
             </div>
             <div class="modal-footer">
@@ -1173,8 +1098,8 @@ function approveRegistration(wasel, savedPrefs) {
             action: 'approve', 
             wasel: wasel,
             send_registration: prefs.send_registration || 0,
-            send_acceptance: prefs.send_acceptance || 1,
-            send_badge: prefs.send_badge || 1,
+            send_acceptance: 1,
+            send_badge: 1,
             send_qr_only: prefs.send_qr_only || 0
         },
         dataType: 'json',
@@ -1220,9 +1145,7 @@ function openApproveModal(wasel, savedPrefs, status) {
         if (typeof prefs.send_acceptance === 'undefined') prefs.send_acceptance = 1;
     }
     
-    $('#opt_registration').prop('checked', prefs.send_registration == 1);
-    $('#opt_acceptance').prop('checked', prefs.send_acceptance == 1);
-    $('#opt_badge').prop('checked', prefs.send_badge == 1);
+    $('#opt_unified').prop('checked', true);
     $('#opt_qr_only').prop('checked', prefs.send_qr_only == 1);
     
     $('#approveModal').modal('show');
@@ -1231,9 +1154,7 @@ function openApproveModal(wasel, savedPrefs, status) {
 // Confirm custom approval with selected options
 function confirmCustomApproval() {
     var wasel = $('#approveWasel').val();
-    var sendRegistration = $('#opt_registration').is(':checked') ? 1 : 0;
-    var sendAcceptance = $('#opt_acceptance').is(':checked') ? 1 : 0;
-    var sendBadge = $('#opt_badge').is(':checked') ? 1 : 0;
+    var sendUnified = $('#opt_unified').is(':checked') ? 1 : 0;
     var sendQrOnly = $('#opt_qr_only').is(':checked') ? 1 : 0;
     
     $('#approveModal').modal('hide');
@@ -1247,9 +1168,9 @@ function confirmCustomApproval() {
         data: { 
             action: 'approve', 
             wasel: wasel,
-            send_registration: sendRegistration,
-            send_acceptance: sendAcceptance,
-            send_badge: sendBadge,
+            send_registration: 0,
+            send_acceptance: sendUnified,
+            send_badge: sendUnified,
             send_qr_only: sendQrOnly
         },
         dataType: 'json',
@@ -1422,14 +1343,12 @@ function exportExcel() {
 }
 
 function saveWhatsAppMessages() {
-    var registrationMsg = $('#registration_message').val();
     var acceptanceMsg = $('#acceptance_message').val();
     
     $.ajax({
         url: 'admin/save_whatsapp_messages.php',
         type: 'POST',
         data: {
-            registration_message: registrationMsg,
             acceptance_message: acceptanceMsg
         },
         dataType: 'json',
@@ -1453,7 +1372,7 @@ function saveWhatsAppMessages() {
 }
 
 function resendApproval(wasel) {
-    if (!confirm('هل تريد إعادة إرسال رسالة القبول وباج الدخول؟')) return;
+    if (!confirm('هل تريد إعادة إرسال الرسالة الموحدة (قبول + باج)؟')) return;
     
     $.ajax({
         url: 'admin/resend_approval.php',
@@ -1467,10 +1386,9 @@ function resendApproval(wasel) {
             console.log('Response:', response);
             if (response && response.success) {
                 var msg = '✅ تم الإرسال!\n\n';
-                msg += '📷 صورة القبول: ' + (response.results && response.results.acceptance && response.results.acceptance.success ? '✅' : '❌') + '\n';
-                msg += '🎫 الباج: ' + (response.results && response.results.badge && response.results.badge.success ? '✅' : '❌');
-                if (response.results && response.results.badge && !response.results.badge.success && response.results.badge.error) {
-                    msg += '\n\n❌ خطأ الباج: ' + response.results.badge.error;
+                msg += '💬 الرسالة الموحدة: ' + (response.results && response.results.unified && response.results.unified.success ? '✅' : '❌');
+                if (response.results && response.results.unified && !response.results.unified.success && response.results.unified.error) {
+                    msg += '\n\n❌ الخطأ: ' + response.results.unified.error;
                 }
                 if (response.badge_url) {
                     msg += '\n\n🔗 URL: ' + response.badge_url;

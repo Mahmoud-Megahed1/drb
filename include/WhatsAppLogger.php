@@ -617,6 +617,7 @@ class WhatsAppLogger {
 if (!defined('WHATSAPP_MSG_REGISTRATION')) {
     define('WHATSAPP_MSG_REGISTRATION', 'registration_received');
     define('WHATSAPP_MSG_ACCEPTANCE', 'acceptance');
+    define('WHATSAPP_MSG_UNIFIED_APPROVAL', 'approval_badge_unified');
     define('WHATSAPP_MSG_BADGE', 'badge');
     define('WHATSAPP_MSG_QR_ONLY', 'qr_only');
     define('WHATSAPP_MSG_REJECTION', 'rejection');

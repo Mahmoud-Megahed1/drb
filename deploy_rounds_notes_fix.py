@@ -16,14 +16,19 @@ files_to_upload = [
     "admin/qr_scanner.php",
     "admin/member_details.php",
     "admin/message_settings.php",
+    "admin/save_whatsapp_messages.php",
     "admin/resend_approval.php",
     "admin/generate_acceptance.php",
+    "admin/pending_messages.php",
+    "admin/whatsapp_log.php",
     "profile.php",
     "member_profile.php",
     "dashboard.php",
     "approve_registration.php",
     "get_notes.php",
     "verify_round.php",
+    "wasender.php",
+    "include/WhatsAppLogger.php",
 ]
 
 

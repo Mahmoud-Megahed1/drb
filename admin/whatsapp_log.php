@@ -73,6 +73,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         break;
                     
                     case WHATSAPP_MSG_ACCEPTANCE:
+                    case 'approval_badge_unified':
                     case WHATSAPP_MSG_BADGE:
                     case WHATSAPP_MSG_QR_ONLY:
                         // Would need full registration data - mark for manual review
@@ -383,6 +384,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
 $messageTypeLabels = [
     'registration_received' => '📝 استلام التسجيل',
     'acceptance' => '✅ قبول مبدئي',
+    'approval_badge_unified' => '✅🎫 رسالة موحدة (قبول + باج)',
     'badge' => '📛 كود الباج',
     'qr_only' => '📷 QR Code',
     'rejection' => '❌ رفض',

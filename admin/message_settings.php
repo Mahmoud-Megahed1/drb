@@ -185,8 +185,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="card" style="background: rgba(37,211,102,0.1); border: 1px solid #25D366;">
             <h3 style="color: #25D366;"><i class="fa-solid fa-info-circle"></i> ملاحظة مهمة</h3>
             <p style="color: #ccc; font-size: 13px;">
-                • الباج يُرسل كـ <strong>صورة</strong> مع الصورة الشخصية وكل المعلومات<br>
-                • كود التسجيل يُضاف تلقائياً في رسالة الترحيب<br>
+                • النظام الحالي يعتمد <strong>رسالة موحدة واحدة</strong> عند القبول (قبول + باج + QR)<br>
+                • رسالة التسجيل الترحيبية <strong>متوقفة</strong> ولن يتم إرسالها تلقائياً<br>
                 • استخدم المتغيرات بين {} لإدراج البيانات الديناميكية
             </p>
         </div>
@@ -207,19 +207,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         <!-- Acceptance Message -->
         <div class="card">
-            <h3><i class="fa-solid fa-check-double"></i> رسالة القبول (مع صورة القبول)</h3>
-            <p>تُرسل كوصف للصورة عند الموافقة على الطلب</p>
+            <h3><i class="fa-solid fa-check-double"></i> الرسالة الموحدة (قبول + باج)</h3>
+            <p>هي الرسالة التي تُرسل عند الموافقة، ويتم إلحاق روابط QR والباج معها تلقائياً.</p>
             <textarea name="acceptance_message" rows="6"><?= htmlspecialchars($messages['acceptance_message']) ?></textarea>
             <div class="variables">
                 <strong>المتغيرات المتاحة:</strong>
-                <code>{wasel}</code> <code>{name}</code> <code>{car_type}</code> <code>{plate}</code>
+                <code>{wasel}</code> <code>{name}</code> <code>{car_type}</code> <code>{plate}</code> <code>{registration_code}</code>
             </div>
         </div>
         
         <!-- Badge Caption -->
-        <div class="card">
-            <h3><i class="fa-solid fa-id-card"></i> وصف صورة الباج</h3>
-            <p>تُرسل كوصف لصورة الباج (الباج صورة تحتوي كل المعلومات)</p>
+        <div class="card" style="opacity:.75; border:1px dashed rgba(255,255,255,.25)">
+            <h3><i class="fa-solid fa-id-card"></i> قالب الباج (احتياطي)</h3>
+            <p>غير مستخدم في التدفق الموحد الحالي، وموجود للتوافق والرجوع المستقبلي.</p>
             <textarea name="badge_caption" rows="4"><?= htmlspecialchars($messages['badge_caption'] ?? '') ?></textarea>
             <div class="variables">
                 <strong>المتغيرات المتاحة:</strong>

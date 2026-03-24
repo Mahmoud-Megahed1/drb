@@ -299,6 +299,72 @@ class WaSender {
             'wasel' => $wasel
         ]);
     }
+
+    /**
+     * إرسال رسالة موحدة: قبول + باج + QR + الكود الدائم
+     */
+    public function sendUnifiedApprovalMessage($orderData, $links = []) {
+        $phone = $orderData['phone'] ?? '';
+        if (empty($phone)) return ['success' => false, 'error' => 'رقم الهاتف مفقود'];
+
+        $wasel = $orderData['wasel'] ?? '-';
+        $name = $orderData['full_name'] ?? $orderData['name'] ?? 'مشترك';
+        $carType = $orderData['car_type'] ?? '-';
+        $plate = $orderData['plate_full'] ?? '';
+        $registrationCode = $orderData['registration_code'] ?? '';
+        $qrUrl = $links['qr_url'] ?? '';
+        $badgeLink = $links['badge_link'] ?? '';
+        $acceptanceLink = $links['acceptance_link'] ?? '';
+
+        $messagesFile = dirname(__FILE__) . '/admin/data/whatsapp_messages.json';
+        $defaultMessage = "🎉 *مبروك! تم قبول طلبك!*\n";
+        $defaultMessage .= "━━━━━━━━━━━━━━━\n\n";
+        $defaultMessage .= "👤 *الاسم:* {name}\n";
+        $defaultMessage .= "🔢 *رقم التسجيل:* #{wasel}\n";
+        $defaultMessage .= "🚗 *السيارة:* {car_type}\n\n";
+        $defaultMessage .= "✅ تم اعتماد مشاركتك بنجاح\n";
+        $defaultMessage .= "━━━━━━━━━━━━━━━";
+
+        if (file_exists($messagesFile)) {
+            $messages = json_decode(file_get_contents($messagesFile), true);
+            if (isset($messages['acceptance_message']) && trim((string)$messages['acceptance_message']) !== '') {
+                $defaultMessage = $messages['acceptance_message'];
+            }
+        }
+
+        $hasQrPlaceholder = strpos($defaultMessage, '{qr_url}') !== false;
+        $hasBadgePlaceholder = strpos($defaultMessage, '{badge_link}') !== false;
+        $hasAcceptancePlaceholder = strpos($defaultMessage, '{acceptance_link}') !== false;
+        $hasCodePlaceholder = strpos($defaultMessage, '{registration_code}') !== false;
+
+        $message = str_replace(
+            ['{wasel}', '{name}', '{car_type}', '{plate}', '{registration_code}', '{qr_url}', '{badge_link}', '{acceptance_link}'],
+            [$wasel, $name, $carType, $plate, $registrationCode, $qrUrl, $badgeLink, $acceptanceLink],
+            $defaultMessage
+        );
+
+        if (!$hasQrPlaceholder && !empty($qrUrl)) {
+            $message .= "\n\n🎫 *باج الدخول (QR):*\n" . $qrUrl;
+        }
+        if (!$hasBadgePlaceholder && !empty($badgeLink)) {
+            $message .= "\n📥 *الباج الكامل:*\n" . $badgeLink;
+        }
+        if (!$hasAcceptancePlaceholder && !empty($acceptanceLink)) {
+            $message .= "\n🌐 *رابط بطاقة القبول:*\n" . $acceptanceLink;
+        }
+        if (!$hasCodePlaceholder && !empty($registrationCode)) {
+            $message .= "\n\n🔑 *الكود الدائم:* " . $registrationCode;
+            $message .= "\n📌 _احتفظ بهذا الكود واستخدمه في التسجيلات القادمة_";
+        }
+
+        $countryCode = $orderData['country_code'] ?? '+964';
+        return $this->sendMessage($phone, $message, $countryCode, [
+            'type' => 'approval_badge_unified',
+            'name' => $name,
+            'wasel' => $wasel,
+            'registration_code' => $registrationCode
+        ]);
+    }
     
     /**
      * إرسال رسالة الرفض

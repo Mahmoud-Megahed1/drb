@@ -249,49 +249,27 @@ function handleApproval(&$data, $index, $registration, $messageOptions = []) {
         $baseUrl = "https://$host";
         
         $badgeToken = $data[$index]['badge_token'] ?? $registration['wasel'];
-        $acceptanceLink = $baseUrl . '/acceptance.php?token=' . urlencode($badgeToken);
-        
-        // Load templates
-        $messagesFile = __DIR__ . '/admin/data/whatsapp_messages.json';
-        $messageTemplates = [];
-        if (file_exists($messagesFile)) {
-            $messageTemplates = json_decode(file_get_contents($messagesFile), true) ?? [];
-        }
         
         if ($sendAcceptance || $sendBadge) {
-            $acceptCaption = $messageTemplates['acceptance_message'] ?? "🎉 *مبروك! تم قبول طلبك!*\n\n👤 {name}\n🔢 #{wasel}\n🚗 {car_type}";
-            $acceptCaption = str_replace(['{name}', '{wasel}', '{car_type}', '{plate}', '{registration_code}'],
-                [$registration['full_name'] ?? '', $registration['wasel'] ?? '', $registration['car_type'] ?? '', $registration['plate_full'] ?? '', $registration['registration_code'] ?? ''],
-                $acceptCaption);
-
             $badgeId = $data[$index]['badge_id'] ?? $registration['wasel'];
             $verifyUrl = $baseUrl . '/verify_entry.php?badge_id=' . urlencode($badgeId) . '&action=checkin';
             $badgeLink = $baseUrl . '/badge.php?token=' . urlencode($badgeToken);
+            $acceptanceLink = $baseUrl . '/acceptance.php?token=' . urlencode($badgeToken);
             $qrCodeUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' . urlencode($verifyUrl);
-            
-            $badgeCaption = $messageTemplates['badge_caption'] ?? "🎫 باج دخول الحلبة\n\n✅ قم بإظهار هذا الباج عند الدخول للحلبة";
-            $badgeCaption = str_replace(['{name}', '{wasel}', '{registration_code}'],
-                [$registration['full_name'] ?? '', $registration['wasel'] ?? '', $registration['registration_code'] ?? ''],
-                $badgeCaption);
 
-            $unifiedCaption = $acceptCaption;
-            $unifiedCaption .= "\n\n🎫 *باج الدخول (QR):*\n" . $qrCodeUrl;
-            $unifiedCaption .= "\n📥 *الباج الكامل:*\n" . $badgeLink;
-            if (!empty($registration['registration_code'])) {
-                $unifiedCaption .= "\n\n🔑 *الكود الدائم:* " . $registration['registration_code'];
-                $unifiedCaption .= "\n📌 _احتفظ بهذا الكود واستخدمه في التسجيلات القادمة_";
-            }
-
-            $unifiedResult = $waSender->sendMessage(
-                $registration['phone'],
-                $unifiedCaption,
-                $registration['country_code'] ?? '+964',
-                [
-                    'type' => 'approval_badge_unified',
-                    'name' => $registration['full_name'] ?? '',
-                    'wasel' => $registration['wasel'] ?? ''
-                ]
-            );
+            $unifiedResult = $waSender->sendUnifiedApprovalMessage([
+                'wasel' => $registration['wasel'] ?? '',
+                'full_name' => $registration['full_name'] ?? '',
+                'car_type' => $registration['car_type'] ?? '',
+                'plate_full' => $registration['plate_full'] ?? '',
+                'registration_code' => $registration['registration_code'] ?? '',
+                'country_code' => $registration['country_code'] ?? '+964',
+                'phone' => $registration['phone'] ?? ''
+            ], [
+                'qr_url' => $qrCodeUrl,
+                'badge_link' => $badgeLink,
+                'acceptance_link' => $acceptanceLink
+            ]);
             $processLog[] = ($unifiedResult['success'] ?? false) ? 'Unified: Queued' : 'Unified: FAILED - ' . ($unifiedResult['error'] ?? 'unknown');
         }
     } catch (\Throwable $e) {

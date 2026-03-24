@@ -143,18 +143,18 @@ try {
     $verifyUrl = $baseUrl . '/verify_entry.php?badge_id=' . urlencode($badgeId) . '&action=checkin';
     $qrCodeUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=' . urlencode($verifyUrl);
 
-    $unifiedCaption = $acceptCaption;
-    $unifiedCaption .= "\n\n🎫 *باج الدخول (QR):*\n" . $qrCodeUrl;
-    $unifiedCaption .= "\n📥 *الباج الكامل:*\n" . $badgeLink;
-    if (!empty($registration['registration_code'])) {
-        $unifiedCaption .= "\n\n🔑 *الكود الدائم:* " . $registration['registration_code'];
-        $unifiedCaption .= "\n📌 _احتفظ بهذا الكود واستخدمه في التسجيلات القادمة_";
-    }
-
-    $results['unified'] = $wasender->sendMessage($registration['phone'], $unifiedCaption, $countryCode, [
-        'type' => 'approval_badge_unified',
-        'name' => $personName,
-        'wasel' => $registration['wasel']
+    $results['unified'] = $wasender->sendUnifiedApprovalMessage([
+        'phone' => $registration['phone'] ?? '',
+        'country_code' => $countryCode,
+        'wasel' => $registration['wasel'] ?? '',
+        'full_name' => $personName,
+        'car_type' => $registration['car_type'] ?? '',
+        'plate_full' => $registration['plate_full'] ?? '',
+        'registration_code' => $registration['registration_code'] ?? ''
+    ], [
+        'qr_url' => $qrCodeUrl,
+        'badge_link' => $badgeLink,
+        'acceptance_link' => $acceptanceLink
     ]);
     
     echo json_encode([

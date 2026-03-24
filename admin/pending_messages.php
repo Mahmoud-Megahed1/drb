@@ -186,7 +186,7 @@ const statusLabels = {
 const typeLabels = {
     'text': '📝 نص', 'image': '🖼️ صورة', 'document': '📄 مستند',
     'registration_received': '📋 استلام تسجيل', 'acceptance': '✅ قبول',
-    'badge': '🎫 باج', 'rejection': '🔴 رفض', 'qr_only': '📲 QR',
+    'badge': '🎫 باج', 'approval_badge_unified': '✅🎫 موحدة (قبول + باج)', 'rejection': '🔴 رفض', 'qr_only': '📲 QR',
     'activation': '🔑 تفعيل', 'broadcast': '📢 بث عام'
 };
 
