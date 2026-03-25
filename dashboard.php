@@ -1009,27 +1009,50 @@ $(document).ready(function() {
     });
 
     // Intersection Observer for true lazy loading
+    var _lazyObserver = null;
     function lazyLoadImages() {
+        // Disconnect previous observer to avoid duplicates
+        if (_lazyObserver) {
+            _lazyObserver.disconnect();
+            _lazyObserver = null;
+        }
+
         var imgs = document.querySelectorAll('img.lazy-img[data-src]');
-        if ('IntersectionObserver' in window) {
-            var observer = new IntersectionObserver(function(entries) {
+        if (imgs.length === 0) return;
+
+        // Helper to load a single image
+        function loadImg(img) {
+            if (img.getAttribute('data-src')) {
+                img.src = img.getAttribute('data-src');
+                img.removeAttribute('data-src');
+                img.classList.remove('lazy-img');
+            }
+        }
+
+        // First pass: immediately load images already visible in viewport
+        imgs.forEach(function(img) {
+            var rect = img.getBoundingClientRect();
+            if (rect.top < window.innerHeight + 100 && rect.bottom > -100 &&
+                rect.left < window.innerWidth && rect.right > 0) {
+                loadImg(img);
+            }
+        });
+
+        // Second pass: observe remaining lazy images for scroll-based loading
+        var remaining = document.querySelectorAll('img.lazy-img[data-src]');
+        if (remaining.length > 0 && 'IntersectionObserver' in window) {
+            _lazyObserver = new IntersectionObserver(function(entries) {
                 entries.forEach(function(entry) {
                     if (entry.isIntersecting) {
-                        var img = entry.target;
-                        img.src = img.getAttribute('data-src');
-                        img.removeAttribute('data-src');
-                        img.classList.remove('lazy-img');
-                        observer.unobserve(img);
+                        loadImg(entry.target);
+                        _lazyObserver.unobserve(entry.target);
                     }
                 });
             }, { rootMargin: '100px' });
-            imgs.forEach(function(img) { observer.observe(img); });
-        } else {
-            // Fallback: load all visible images
-            imgs.forEach(function(img) {
-                img.src = img.getAttribute('data-src');
-                img.removeAttribute('data-src');
-            });
+            remaining.forEach(function(img) { _lazyObserver.observe(img); });
+        } else if (remaining.length > 0) {
+            // Fallback: load all
+            remaining.forEach(function(img) { loadImg(img); });
         }
     }
     // Initial lazy load

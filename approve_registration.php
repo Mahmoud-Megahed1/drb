@@ -248,23 +248,24 @@ function handleApproval(&$data, $index, $registration, $messageOptions = []) {
         $host = $_SERVER['HTTP_HOST'] ?? 'yellowgreen-quail-410393.hostingersite.com';
         $baseUrl = "https://$host";
         
-        $badgeToken = $data[$index]['badge_token'] ?? $registration['wasel'];
+        $badgeToken = $data[$index]['badge_token'] ?? $data[$index]['wasel'];
         
         if ($sendAcceptance || $sendBadge) {
-            $badgeId = $data[$index]['badge_id'] ?? $registration['wasel'];
+            $badgeId = $data[$index]['badge_id'] ?? $data[$index]['wasel'];
             $verifyUrl = $baseUrl . '/verify_entry.php?badge_id=' . urlencode($badgeId) . '&action=checkin';
             $badgeLink = $baseUrl . '/badge.php?token=' . urlencode($badgeToken);
             $acceptanceLink = $baseUrl . '/acceptance.php?token=' . urlencode($badgeToken);
             $qrCodeUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' . urlencode($verifyUrl);
 
+            // CRITICAL FIX: Use $data[$index] (latest data) instead of $registration (stale snapshot)
             $unifiedResult = $waSender->sendUnifiedApprovalMessage([
-                'wasel' => $registration['wasel'] ?? '',
-                'full_name' => $registration['full_name'] ?? '',
-                'car_type' => $registration['car_type'] ?? '',
-                'plate_full' => $registration['plate_full'] ?? '',
-                'registration_code' => $registration['registration_code'] ?? '',
-                'country_code' => $registration['country_code'] ?? '+964',
-                'phone' => $registration['phone'] ?? ''
+                'wasel' => $data[$index]['wasel'] ?? '',
+                'full_name' => $data[$index]['full_name'] ?? '',
+                'car_type' => $data[$index]['car_type'] ?? '',
+                'plate_full' => $data[$index]['plate_full'] ?? '',
+                'registration_code' => $data[$index]['registration_code'] ?? '',
+                'country_code' => $data[$index]['country_code'] ?? '+964',
+                'phone' => $data[$index]['phone'] ?? ''
             ], [
                 'qr_url' => $qrCodeUrl,
                 'badge_link' => $badgeLink,
@@ -278,7 +279,7 @@ function handleApproval(&$data, $index, $registration, $messageOptions = []) {
     
     // ============ SYNC (fast operations) ============
     try { MemberService::ensureSQLiteRecord($data[$index]); } catch (\Throwable $e) {}
-    try { MemberService::syncToJsonByWasel($registration['wasel']); } catch (\Throwable $e) {}
+    try { MemberService::syncToJsonByWasel($data[$index]['wasel']); } catch (\Throwable $e) {}
     try { RegistrationActionLogger::log('approved', $data[$index], 'تم القبول', $username); } catch (\Throwable $e) {}
     
     file_put_contents($debugLog, date('[H:i:s] ') . "Done {$registration['wasel']} | " . implode(' | ', $processLog) . "\n", FILE_APPEND);

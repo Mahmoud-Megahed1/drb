@@ -1690,7 +1690,7 @@ class MemberService {
         $existingId = $stmt->fetchColumn();
         
         if ($existingId) {
-            // Update existing record from JSON data (critical for status changes)
+            // Update existing record from JSON data (critical for status changes AND re-registrations)
             $stmt = $pdo->prepare("
                 UPDATE registrations 
                 SET status = ?, 
@@ -1702,6 +1702,11 @@ class MemberService {
                     plate_number = COALESCE(?, plate_number),
                     plate_letter = COALESCE(?, plate_letter),
                     plate_governorate = COALESCE(?, plate_governorate),
+                    engine_size = COALESCE(?, engine_size),
+                    participation_type = COALESCE(?, participation_type),
+                    personal_photo = COALESCE(?, personal_photo),
+                    front_image = COALESCE(?, front_image),
+                    back_image = COALESCE(?, back_image),
                     license_front = COALESCE(?, license_front),
                     license_back = COALESCE(?, license_back)
                 WHERE id = ?
@@ -1716,6 +1721,11 @@ class MemberService {
                 $reg['plate_number'] ?? null,
                 $reg['plate_letter'] ?? null,
                 $reg['plate_governorate'] ?? null,
+                $reg['engine_size'] ?? null,
+                $reg['participation_type'] ?? null,
+                $reg['personal_photo'] ?? ($reg['images']['personal_photo'] ?? null),
+                $reg['front_image'] ?? ($reg['images']['front_image'] ?? null),
+                $reg['back_image'] ?? ($reg['images']['back_image'] ?? null),
                 $reg['license_front'] ?? ($reg['images']['license_front'] ?? null),
                 $reg['license_back'] ?? ($reg['images']['license_back'] ?? null),
                 $existingId

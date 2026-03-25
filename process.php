@@ -846,20 +846,71 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["action"]) && $_POST["
                 $memberId
             ]);
             
-            // Create registration record in SQLite (if not already exists)
+            // Create or UPDATE registration record in SQLite
             $stmtChk = $pdo->prepare("SELECT id FROM registrations WHERE member_id = ? AND championship_id = ?");
             $stmtChk->execute([$memberId, $champId]);
-            if (!$stmtChk->fetchColumn()) {
-                // Get championship name from frame settings
-                $champName = 'البطولة الحالية';
-                $frameSettingsFile = 'admin/data/frame_settings.json';
-                if (file_exists($frameSettingsFile)) {
-                    $fs = json_decode(file_get_contents($frameSettingsFile), true);
-                    if (!empty($fs['form_titles']['sub_title'])) {
-                        $champName = $fs['form_titles']['sub_title'];
-                    }
+            $existingSqliteId = $stmtChk->fetchColumn();
+            
+            // Get championship name from frame settings
+            $champName = 'البطولة الحالية';
+            $frameSettingsFile = 'admin/data/frame_settings.json';
+            if (file_exists($frameSettingsFile)) {
+                $fs = json_decode(file_get_contents($frameSettingsFile), true);
+                if (!empty($fs['form_titles']['sub_title'])) {
+                    $champName = $fs['form_titles']['sub_title'];
                 }
-                
+            }
+            
+            if ($existingSqliteId) {
+                // ===================================================================
+                // CRITICAL FIX: UPDATE existing SQLite record with new data
+                // Previously this was skipped, leaving stale data that would
+                // overwrite data.json during approval via syncToJsonByWasel()
+                // ===================================================================
+                $pdo->prepare("
+                    UPDATE registrations SET
+                        wasel = ?,
+                        status = 'pending',
+                        car_type = ?,
+                        car_year = ?,
+                        car_color = ?,
+                        engine_size = ?,
+                        participation_type = ?,
+                        plate_number = ?,
+                        plate_letter = ?,
+                        plate_governorate = ?,
+                        personal_photo = CASE WHEN ? != '' THEN ? ELSE personal_photo END,
+                        front_image = CASE WHEN ? != '' THEN ? ELSE front_image END,
+                        side_image = CASE WHEN ? != '' THEN ? ELSE side_image END,
+                        back_image = CASE WHEN ? != '' THEN ? ELSE back_image END,
+                        edited_image = CASE WHEN ? != '' THEN ? ELSE edited_image END,
+                        license_front = CASE WHEN ? != '' THEN ? ELSE license_front END,
+                        license_back = CASE WHEN ? != '' THEN ? ELSE license_back END,
+                        session_badge_token = ?,
+                        championship_name = ?
+                    WHERE id = ?
+                ")->execute([
+                    $wasel,
+                    html_entity_decode($newData['car_type'], ENT_QUOTES, 'UTF-8'),
+                    $newData['car_year'],
+                    html_entity_decode($newData['car_color'], ENT_QUOTES, 'UTF-8'),
+                    html_entity_decode($newData['engine_size'], ENT_QUOTES, 'UTF-8'),
+                    html_entity_decode($newData['participation_type'], ENT_QUOTES, 'UTF-8'),
+                    html_entity_decode($newData['plate_number'], ENT_QUOTES, 'UTF-8'),
+                    html_entity_decode($newData['plate_letter'], ENT_QUOTES, 'UTF-8'),
+                    html_entity_decode($newData['plate_governorate'], ENT_QUOTES, 'UTF-8'),
+                    $imagePaths['personal_photo'] ?? '', $imagePaths['personal_photo'] ?? '',
+                    $imagePaths['front_image'] ?? '', $imagePaths['front_image'] ?? '',
+                    $imagePaths['side_image'] ?? '', $imagePaths['side_image'] ?? '',
+                    $imagePaths['back_image'] ?? '', $imagePaths['back_image'] ?? '',
+                    $imagePaths['edited_image'] ?? '', $imagePaths['edited_image'] ?? '',
+                    $imagePaths['license_front'] ?? '', $imagePaths['license_front'] ?? '',
+                    $imagePaths['license_back'] ?? '', $imagePaths['license_back'] ?? '',
+                    $registrationCode,
+                    $champName,
+                    $existingSqliteId
+                ]);
+            } else {
                 $pdo->prepare("
                     INSERT INTO registrations (
                         member_id, championship_id, wasel, status,
@@ -881,9 +932,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["action"]) && $_POST["
                     html_entity_decode($newData['plate_governorate'], ENT_QUOTES, 'UTF-8'),
                     $imagePaths['personal_photo'] ?? '',
                     $imagePaths['front_image'] ?? '',
-                    $imagePaths['side_image'] ?? $imagePaths['side_image'] ?? '',
+                    $imagePaths['side_image'] ?? '',
                     $imagePaths['back_image'] ?? '',
                     $imagePaths['edited_image'] ?? '',
+                    $imagePaths['license_front'] ?? '',
+                    $imagePaths['license_back'] ?? '',
                     $registrationCode,
                     $champName
                 ]);
