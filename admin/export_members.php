@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Export Members to Excel/CSV
  * Download members data as spreadsheet
@@ -121,22 +121,23 @@ if (isset($_GET['download'])) {
     // ------------------------------------------------------------------
     $headers = [
         'رقم الواصل',              // 0: Wasel
-        'الرقم التعريفي',          // 1: Registration Code
-        'الاسم',                   // 2: Name
-        'رقم الهاتف',              // 3: Phone
-        'المحافظة',                // 4: Governorate
-        'محافظة اللوحة',         // 5: Plate Gov
-        'حرف اللوحة',            // 6: Plate Letter
-        'رقم اللوحة',            // 7: Plate Number
-        'اللوحة كاملة',          // 8: Full Plate String
-        'نوع السيارة',             // 9: Car Type
-        'سنة الصنع',               // 10: Car Year
-        'لون السيارة',             // 11: Car Color
-        'حجم المحرك',              // 12: Engine Size
-        'نوع المشاركة',            // 13: Participation Type
-        'الحالة',                  // 14: Status (pending/approved/rejected)
-        'تاريخ التسجيل',           // 15: Registration Date
-        'عدد المشاركات'            // 16: Championships Participated
+        'رقم العضو الدائم',        // 1: Member ID (SQLite members.id - matches upload file prefix)
+        'الرقم التعريفي',          // 2: Registration Code
+        'الاسم',                   // 3: Name
+        'رقم الهاتف',              // 4: Phone
+        'المحافظة',                // 5: Governorate
+        'محافظة اللوحة',         // 6: Plate Gov
+        'حرف اللوحة',            // 7: Plate Letter
+        'رقم اللوحة',            // 8: Plate Number
+        'اللوحة كاملة',          // 9: Full Plate String
+        'نوع السيارة',             // 10: Car Type
+        'سنة الصنع',               // 11: Car Year
+        'لون السيارة',             // 12: Car Color
+        'حجم المحرك',              // 13: Engine Size
+        'نوع المشاركة',            // 14: Participation Type
+        'الحالة',                  // 15: Status (pending/approved/rejected)
+        'تاريخ التسجيل',           // 16: Registration Date
+        'عدد المشاركات'            // 17: Championships Participated
     ];
 
     header('Content-Type: text/csv; charset=UTF-8');
@@ -175,6 +176,7 @@ if (isset($_GET['download'])) {
 
             fputcsv($output, [
                 $reg['wasel'] ?? '',                                        // رقم الواصل
+                $reg['member_id'] ?? '',                                    // رقم العضو الدائم
                 '="' . $code . '"',                                         // الرقم التعريفي
                 $reg['full_name'] ?? $reg['name'] ?? '',                    // الاسم
                 '="' . $phone . '"',                                        // رقم الهاتف
@@ -264,6 +266,7 @@ if (isset($_GET['download'])) {
             
             fputcsv($output, [
                 $wasel ? '="' . $wasel . '"' : '',                          // رقم الواصل
+                $m['id'],                                                   // رقم العضو الدائم
                 '="' . $pCode . '"',                                        // الرقم التعريفي
                 $m['name'],                                                 // الاسم
                 '="' . $phone . '"',                                        // رقم الهاتف

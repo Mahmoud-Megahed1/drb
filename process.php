@@ -515,6 +515,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["action"]) && $_POST["
     }
     $wasel = $counterNext;
     
+    // === EARLY MEMBER ID RESOLUTION (for upload file naming) ===
+    // Use SQLite members.id as a globally unique, persistent ID for upload filenames.
+    // This ID never resets across championships, so files can always be traced to their owner.
+    $memberId = $wasel; // Safe fallback default
+    $sqlMemberEarly = null;
+    try {
+        $cleanPhoneForId = normalizePhone($_POST['phone']);
+        $memberNameForId = html_entity_decode(trim($_POST['full_name']), ENT_QUOTES, 'UTF-8');
+        $memberGovForId = html_entity_decode(trim($_POST['governorate']), ENT_QUOTES, 'UTF-8');
+        $sqlMemberEarly = MemberService::getOrCreateMember($cleanPhoneForId, $memberNameForId, $memberGovForId);
+        $memberId = $sqlMemberEarly['id'];
+    } catch (\Throwable $e) {
+        // Fallback: use wasel if SQLite member creation fails — registration still works
+        error_log('Early member ID resolution failed (using wasel as fallback): ' . $e->getMessage());
+    }
+    
     // Process AND upload ALL possible image fields (even if not mandatory)
     $imagePaths = [];
     $maxFileSize = 100 * 1024 * 1024; // 100MB
@@ -586,7 +602,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["action"]) && $_POST["
             }
             
             // Generate unique filename
-            $filename = $wasel . '_' . $fileField . '_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+            $filename = $memberId . '_' . $fileField . '_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
             $filepath = $uploadDir . $filename;
             
             // Move uploaded file WITHOUT compression (Fast Track) to prevent 503 Server Timeouts
@@ -693,6 +709,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["action"]) && $_POST["
     
     $newData = [
         'wasel' => strval($wasel),
+        'member_id' => strval($memberId),
         'inchage_status' => 'pending', // Default status for new registrations
         'instagram' => isset($_POST['instagram']) ? trim($_POST['instagram']) : '',
         'badge_id' => $badgeId,
@@ -800,8 +817,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["action"]) && $_POST["
             $memberName = html_entity_decode($newData['full_name'], ENT_QUOTES, 'UTF-8');
             $memberGov = html_entity_decode($newData['governorate'], ENT_QUOTES, 'UTF-8');
             
-            // Create or find the member in SQLite
-            $sqlMember = MemberService::getOrCreateMember($cleanPhone, $memberName, $memberGov);
+            // Reuse early-resolved member if available, otherwise create/find
+            $sqlMember = $sqlMemberEarly ?? MemberService::getOrCreateMember($cleanPhone, $memberName, $memberGov);
             $memberId = $sqlMember['id'];
             
             // Update member profile with permanent code and car data
