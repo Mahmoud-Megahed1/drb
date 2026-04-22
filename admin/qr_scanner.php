@@ -329,7 +329,12 @@ $user = getCurrentUser();
             if (data.success) {
                 showResult(data);
             } else {
-                showError(data.message);
+                // Handle old member not registered in current championship
+                if (data.status === 'not_registered' || data.is_old_member) {
+                    showNotRegistered(data);
+                } else {
+                    showError(data.message);
+                }
             }
         } catch (e) {
             showError('خطأ في الاتصال بالسيرفر');
@@ -456,6 +461,30 @@ $user = getCurrentUser();
         playSound('error');
         
         isProcessing = false; // Allow retry immediately
+    }
+    
+    function showNotRegistered(data) {
+        const overlay = document.getElementById('resultOverlay');
+        overlay.classList.remove('success-bg', 'error-bg');
+        overlay.classList.add('warning-bg');
+        
+        document.getElementById('resultIcon').className = 'fa-solid fa-user-xmark result-icon';
+        document.getElementById('resultTitle').textContent = '🛑 غير مسجل في البطولة';
+        
+        const info = data.member_info || {};
+        document.getElementById('resultDesc').innerHTML = `
+            <div style="font-size:22px;font-weight:bold;color:#000">${info.name || data.member_name || 'غير معروف'}</div>
+            <div style="margin-top:8px;color:#333">${info.car || ''} ${info.plate ? '| ' + info.plate : ''}</div>
+            <div style="margin-top:15px;padding:12px;background:rgba(0,0,0,0.15);border-radius:10px;color:#333">
+                <i class="fa-solid fa-circle-info"></i>
+                هذا العضو موجود كعضو قديم لكنه <strong>غير مسجل</strong> في البطولة الحالية
+            </div>
+        `;
+        
+        document.getElementById('warningBox').style.display = 'none';
+        overlay.classList.add('visible');
+        playSound('warning');
+        isProcessing = false;
     }
     
     function continueScanning() {

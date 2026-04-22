@@ -79,6 +79,7 @@ $colors = [
     'free_show' => '#3b82f6',      // Blue
     'special_car' => '#ef4444',    // Red
     'burnout' => '#f59e0b',        // Orange
+    'motorbikes' => '#10b981',     // Green
     'unknown' => '#6b7280'         // Gray
 ];
 

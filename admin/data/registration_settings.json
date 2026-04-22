@@ -21,6 +21,11 @@
             "id": "burnout",
             "label": "المشاركة بفعالية Burnout",
             "enabled": true
+        },
+        {
+            "id": "motorbikes",
+            "label": "دراجات",
+            "enabled": true
         }
     ]
 }

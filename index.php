@@ -118,7 +118,8 @@ function getParticipationTypes() {
     $defaults = [
         ['id' => 'free_show', 'label' => 'المشاركة بالاستعراض الحر', 'enabled' => true],
         ['id' => 'special_car', 'label' => 'المشاركة كسيارة مميزة فقط بدون استعراض', 'enabled' => true],
-        ['id' => 'burnout', 'label' => 'المشاركة بفعالية Burnout (عدد محدود)', 'enabled' => true]
+        ['id' => 'burnout', 'label' => 'المشاركة بفعالية Burnout (عدد محدود)', 'enabled' => true],
+        ['id' => 'motorbikes', 'label' => 'دراجات', 'enabled' => true]
     ];
     
     if (file_exists($settingsFile)) {
@@ -1309,6 +1310,50 @@ $fieldSettings = getFormFieldsSettings();
     // Add listener for country change
     document.getElementById('country_code').addEventListener('change', function() {
         validatePhoneInput(document.getElementById('phone'));
+    });
+
+    // Handle participation type changes for Motorbikes
+    document.addEventListener('DOMContentLoaded', function() {
+        var partTypeSelect = document.getElementById('participation_type');
+        if (partTypeSelect) {
+            partTypeSelect.addEventListener('change', function() {
+                var isMotorbike = this.value === 'motorbikes';
+                
+                // Labels to change
+                var carInfoSectionTitle = document.querySelector('.form-section:nth-of-type(4) .section-title');
+                if (carInfoSectionTitle) {
+                    carInfoSectionTitle.innerHTML = '<span class="section-number">3</span> ' + (isMotorbike ? 'بيانات الدراجة' : 'بيانات السيارة');
+                }
+                
+                var carTypeLabel = document.querySelector('label[for="car_type"]');
+                if (carTypeLabel) carTypeLabel.textContent = isMotorbike ? 'نوع الدراجة' : 'نوع السيارة';
+                
+                var carColorLabel = document.querySelector('label[for="car_color"]');
+                if (carColorLabel) carColorLabel.textContent = isMotorbike ? 'لون الدراجة' : 'لون السيارة';
+                
+                var frontImageLabel = document.querySelector('label[for="front_image"]');
+                if (frontImageLabel) frontImageLabel.innerHTML = '<span class="upload-icon">📸</span> ' + (isMotorbike ? 'صورة أمام الدراجة مع ظهور اللوحة' : 'صورة أمام السيارة مع ظهور اللوحة');
+                
+                var backImageLabel = document.querySelector('label[for="back_image"]');
+                if (backImageLabel) backImageLabel.innerHTML = '<span class="upload-icon">📸</span> ' + (isMotorbike ? 'صورة خلف الدراجة مع ظهور اللوحة' : 'صورة خلف السيارة مع ظهور اللوحة');
+
+                // Toggle engine size options if it's a motorbike
+                var engineSelect = document.getElementById('engine_size');
+                if (engineSelect) {
+                    if (isMotorbike) {
+                        engineSelect.value = 'other'; // default to other for motorbikes
+                        engineSelect.parentElement.style.display = 'none'; // hide it for motorbikes if we don't need it
+                    } else {
+                        engineSelect.parentElement.style.display = 'block';
+                    }
+                }
+            });
+            // Trigger change on load to set initial state
+            setTimeout(function() {
+                var event = new Event('change');
+                partTypeSelect.dispatchEvent(event);
+            }, 500);
+        }
     });
   </script>
 </body>

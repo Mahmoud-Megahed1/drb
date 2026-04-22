@@ -38,7 +38,7 @@ $logFile = __DIR__ . '/../admin/data/worker_debug.log';
 function logWorker($msg, $level = 'INFO') {
     global $logFile;
     $memory = round(memory_get_usage(true) / 1024 / 1024, 1);
-    file_put_contents($logFile, date('[Y-m-d H:i:s]') . " [$level] [${memory}MB] $msg\n", FILE_APPEND);
+    file_put_contents($logFile, date('[Y-m-d H:i:s]') . " [$level] [{$memory}MB] $msg\n", FILE_APPEND);
     
     // Keep log file under 500KB
     if (file_exists($logFile) && filesize($logFile) > 512000) {

@@ -136,6 +136,8 @@ if ($foundInData) {
         $registration['permanent_code'] = $linkCode;
         $registration['badge_token'] = $foundInData['badge_token'] ?? ''; // Preserve token
         $registration['registration_code'] = $linkCode;
+        // FIXED: Preserve actual status from data.json - don't auto-approve
+        $registration['status'] = $foundInData['status'] ?? 'pending';
         // Merge latest has_entered from data.json if available
         $registration['has_entered'] = $foundInData['has_entered'] ?? false;
         $registration['entry_time'] = $foundInData['entry_time'] ?? null;
@@ -143,6 +145,15 @@ if ($foundInData) {
         
         $source = 'members_linked';
         $targetIndex = $foundIndex; // We update data.json
+        
+        // FIXED: Check if actually approved in the current championship
+        if (($registration['status'] ?? '') !== 'approved') {
+            echo json_encode([
+                'success' => false, 
+                'message' => 'التسجيل غير معتمد بعد (الحالة: ' . ($registration['status'] ?? 'pending') . ')'
+            ], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
     } else {
         // Not in members.json. Check if approved in data.json
         if (($foundInData['status'] ?? '') === 'approved') {
@@ -169,11 +180,9 @@ if ($foundInData) {
             $registration = $m;
             $registration['wasel'] = $m['wasel'] ?? $key;
             $registration['registration_code'] = $key;
-            $registration['status'] = 'approved';
-            $registration['has_entered'] = false; // We can't track this efficiently without data.json link yet
+            $registration['status'] = 'not_registered'; // NOT approved - old member not in current championship
+            $registration['has_entered'] = false;
             $source = 'members_direct';
-            // We can't update data.json efficiently here if not linked.
-            // But we must allow entry.
             break;
         }
     }
@@ -215,6 +224,42 @@ if (!$registration) {
 if (!$registration) {
     // DEBUG: Return what we searched for to help user
     echo json_encode(['success' => false, 'message' => 'التسجيل غير موجود (' . htmlspecialchars(substr($searchId, 0, 10)) . '...)']);
+    exit;
+}
+
+// Block old members not registered in current championship
+if ($source === 'members_direct') {
+    if ($action === 'checkin') {
+        echo json_encode([
+            'success' => false,
+            'status' => 'not_registered',
+            'message' => 'هذا العضو موجود كعضو قديم لكنه غير مسجل في البطولة الحالية. يرجى التسجيل أولاً.',
+            'member_info' => [
+                'name' => $registration['full_name'] ?? '',
+                'car' => $registration['car_type'] ?? '',
+                'plate' => $registration['plate_full'] ?? '',
+                'wasel' => $registration['wasel'] ?? '',
+                'is_old_member' => true
+            ]
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    
+    // For verify only (no action), return info with not-registered flag
+    echo json_encode([
+        'success' => true,
+        'status' => 'not_registered',
+        'message' => 'عضو قديم - غير مسجل في البطولة الحالية',
+        'data' => [
+            'name' => $registration['full_name'] ?? '',
+            'car' => $registration['car_type'] ?? '',
+            'plate' => $registration['plate_full'] ?? '',
+            'has_entered' => false,
+            'wasel' => $registration['wasel'] ?? '',
+            'is_old_member' => true,
+            'not_registered_current' => true
+        ]
+    ], JSON_UNESCAPED_UNICODE);
     exit;
 }
 
@@ -347,29 +392,23 @@ if ($action === 'checkin') {
     */
 
     // Update status
-    // Handle case where member was found in members.json or DB but not in data.json
+    // FIXED: Block entry for members not in data.json (not registered in current championship)
     if ($targetIndex === -1) {
-        // Create a new entry in data.json for tracking
-        $newEntry = [
-            'wasel' => $registration['wasel'],
-            'assigned_time' => $registration['assigned_time'] ?? '',
-            'assigned_date' => $registration['assigned_date'] ?? '',
-            'assigned_order' => $registration['assigned_order'] ?? 0 ?? '',
-            'registration_code' => $registration['registration_code'] ?? '',
-            'full_name' => $registration['full_name'] ?? '',
-            'phone' => $registration['phone'] ?? '',
-            'car_type' => $registration['car_type'] ?? '',
-            'plate_full' => $registration['plate_full'] ?? '',
-            'status' => 'approved',
-            'badge_token' => $registration['badge_token'] ?? '',
-            'badge_id' => $registration['badge_id'] ?? '',
-            'has_entered' => true,
-            'entry_time' => date('Y-m-d H:i:s'),
-            'entered_by' => $operatorName,
-            'entered_department' => $operatorDepartment
-        ];
-        $data[] = $newEntry;
-        $targetIndex = count($data) - 1;
+        // Member exists in DB/members.json but NOT in current championship data.json
+        // Do NOT auto-create a registration entry
+        echo json_encode([
+            'success' => false,
+            'status' => 'not_registered',
+            'message' => 'هذا العضو غير مسجل في البطولة الحالية. لا يمكن تسجيل دخوله.',
+            'member_info' => [
+                'name' => $registration['full_name'] ?? '',
+                'car' => $registration['car_type'] ?? '',
+                'plate' => $registration['plate_full'] ?? '',
+                'wasel' => $registration['wasel'] ?? '',
+                'is_old_member' => true
+            ]
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
     } else {
         $data[$targetIndex]['has_entered'] = true;
         $data[$targetIndex]['entry_time'] = date('Y-m-d H:i:s');

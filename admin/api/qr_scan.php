@@ -185,6 +185,17 @@ try {
                 throw new Exception('????? ??? ?????');
             }
             
+            // Block entry if not registered in current championship
+            if (!$result['is_current_participant']) {
+                echo json_encode([
+                    'success' => false,
+                    'error' => 'هذا العضو غير مسجل في البطولة الحالية. لا يمكن تسجيل دخوله.',
+                    'is_old_member' => true,
+                    'member_name' => $member['full_name'] ?? $member['name'] ?? ''
+                ], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+            
             $gate = $_POST['gate'] ?? 'main';
             $roundId = $_POST['round_id'] ?? null;
             

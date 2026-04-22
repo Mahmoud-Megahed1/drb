@@ -121,7 +121,7 @@ if (isset($_GET['download'])) {
     // ------------------------------------------------------------------
     $headers = [
         'رقم الواصل',              // 0: Wasel
-        'رقم العضو الدائم',        // 1: Member ID (SQLite members.id - matches upload file prefix)
+        'رقم العضو الدائم',        // 1: Permanent Member ID (matches upload file prefix)
         'الرقم التعريفي',          // 2: Registration Code
         'الاسم',                   // 3: Name
         'رقم الهاتف',              // 4: Phone
@@ -135,7 +135,7 @@ if (isset($_GET['download'])) {
         'لون السيارة',             // 12: Car Color
         'حجم المحرك',              // 13: Engine Size
         'نوع المشاركة',            // 14: Participation Type
-        'الحالة',                  // 15: Status (pending/approved/rejected)
+        'الحالة',                  // 15: Status
         'تاريخ التسجيل',           // 16: Registration Date
         'عدد المشاركات'            // 17: Championships Participated
     ];
@@ -176,7 +176,7 @@ if (isset($_GET['download'])) {
 
             fputcsv($output, [
                 $reg['wasel'] ?? '',                                        // رقم الواصل
-                $reg['member_id'] ?? '',                                    // رقم العضو الدائم
+                $reg['member_id'] ?? ($reg['wasel'] ?? ''),                 // رقم العضو الدائم
                 '="' . $code . '"',                                         // الرقم التعريفي
                 $reg['full_name'] ?? $reg['name'] ?? '',                    // الاسم
                 '="' . $phone . '"',                                        // رقم الهاتف
@@ -222,7 +222,8 @@ if (isset($_GET['download'])) {
             }
             // --------------------------
             
-            if (isset($m['manual_championships_count']) && $m['manual_championships_count'] !== null) {
+            if (!empty($m['manual_championships_count'])) {
+                // manual_championships_count is an explicit admin override
                 $totalCount = (int)$m['manual_championships_count'];
             } else {
                 $dbCount = (int)($m['total_championships'] ?? 0);
@@ -266,7 +267,7 @@ if (isset($_GET['download'])) {
             
             fputcsv($output, [
                 $wasel ? '="' . $wasel . '"' : '',                          // رقم الواصل
-                $m['id'],                                                   // رقم العضو الدائم
+                $m['id'] - 1,                                               // رقم العضو الدائم (adjusted to match wasel)
                 '="' . $pCode . '"',                                        // الرقم التعريفي
                 $m['name'],                                                 // الاسم
                 '="' . $phone . '"',                                        // رقم الهاتف

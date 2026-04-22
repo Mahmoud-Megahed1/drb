@@ -2,55 +2,29 @@
 /**
  * Gate Entry Page - صفحة الدخول للبوابة
  * صفحة محدودة الصلاحيات لعامل البوابة
+ * يتطلب تسجيل الدخول من صفحة المشرفين (login.php)
  */
 session_start();
 
-// Simple gate password (can be changed)
-$gatePassword = 'gate2025';
-
-// Handle login
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['gate_password'])) {
-    if ($_POST['gate_password'] === $gatePassword) {
-        $_SESSION['gate_user'] = true;
-        $_SESSION['gate_login_time'] = time();
-    } else {
-        $error = 'كلمة المرور غير صحيحة';
-    }
-}
-
 // Handle logout
 if (isset($_GET['logout'])) {
-    // If logged in as system user, use system logout
-    if (isset($_SESSION['user'])) {
-        header('Location: logout.php');
-        exit;
-    }
-    
-    // Gate user logout
-    unset($_SESSION['gate_user']);
-    unset($_SESSION['gate_login_time']);
-    header('Location: gate.php');
+    header('Location: logout.php');
     exit;
 }
 
-// Check if logged in (Either gate password or system admin role)
-$isGateUser = isset($_SESSION['gate_user']) && $_SESSION['gate_user'] === true;
-
+// Check if logged in via the system login (login.php)
 // Check legacy session
-$isLegacySystemUser = isset($_SESSION['user']) && isset($_SESSION['user']->role) && in_array($_SESSION['user']->role, ['root', 'gate', 'scanner']);
+$isLegacySystemUser = isset($_SESSION['user']) && isset($_SESSION['user']->role) && in_array($_SESSION['user']->role, ['root', 'gate', 'scanner', 'admin']);
 
 // Check new SQLite session
 $isNewSystemUser = isset($_SESSION['user_role']) && in_array($_SESSION['user_role'], ['admin', 'gate', 'scanner', 'root', 'rounds', 'notes']);
 
-$isSystemUser = $isLegacySystemUser || $isNewSystemUser;
-$isLoggedIn = $isGateUser || $isSystemUser;
+$isLoggedIn = $isLegacySystemUser || $isNewSystemUser;
 
-// Session timeout (8 hours) for gate user (system user handled by dashboard)
-if ($isGateUser && (time() - ($_SESSION['gate_login_time'] ?? 0)) > 28800) {
-    unset($_SESSION['gate_user']);
-    if (!$isSystemUser) {
-        $isLoggedIn = false;
-    }
+// If not logged in, redirect to login page with redirect back
+if (!$isLoggedIn) {
+    header('Location: login.php?redirect=gate.php');
+    exit;
 }
 
 // Load data if logged in
@@ -70,7 +44,10 @@ if ($isLoggedIn) {
         'free_show' => 'استعراض حر',
         'show' => 'عرض',
         'organization' => 'تنظيم',
-        'sponsor' => 'راعي'
+        'sponsor' => 'راعي',
+        'special_car' => 'سيارة مميزة',
+        'burnout' => 'Burnout',
+        'motorbikes' => 'دراجات'
     ];
 
     // Load approved members from data.json (Current Championship)
@@ -123,46 +100,7 @@ if ($isLoggedIn) {
             color: #fff;
         }
         
-        .login-container {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            padding: 20px;
-        }
-        
-        .login-box {
-            background: rgba(255,255,255,0.1);
-            padding: 40px;
-            border-radius: 20px;
-            text-align: center;
-            max-width: 400px;
-            width: 100%;
-        }
-        
-        .login-box h1 { font-size: 24px; margin-bottom: 20px; }
-        .login-box input {
-            width: 100%;
-            padding: 15px;
-            border: none;
-            border-radius: 10px;
-            font-size: 18px;
-            text-align: center;
-            margin-bottom: 15px;
-            font-family: inherit;
-        }
-        .login-box button {
-            width: 100%;
-            padding: 15px;
-            border: none;
-            border-radius: 10px;
-            background: linear-gradient(135deg, #28a745, #20c997);
-            color: #fff;
-            font-size: 18px;
-            cursor: pointer;
-            font-family: inherit;
-        }
-        .error { color: #ff6b6b; margin-bottom: 15px; }
+
         
         /* Dashboard Styles */
         .header {
@@ -278,25 +216,6 @@ if ($isLoggedIn) {
 </head>
 <body>
 
-<?php if (!$isLoggedIn): ?>
-<!-- Login Form -->
-<div class="login-container">
-    <div class="login-box">
-        <h1>🚪 بوابة الدخول</h1>
-        <p style="margin-bottom: 20px; opacity: 0.7;">أدخل كلمة المرور للوصول</p>
-        
-        <?php if (isset($error)): ?>
-        <p class="error"><?= htmlspecialchars($error) ?></p>
-        <?php endif; ?>
-        
-        <form method="POST">
-            <input type="password" name="gate_password" placeholder="كلمة المرور" required autofocus>
-            <button type="submit">دخول</button>
-        </form>
-    </div>
-</div>
-
-<?php else: ?>
 <!-- Gate Dashboard -->
 <div class="header">
     <h1>🚪 بوابة الدخول</h1>
@@ -458,7 +377,7 @@ function admitFromGate(wasel, btn) {
 }
 </script>
 
-<?php endif; ?>
+
 
 </body>
 </html>

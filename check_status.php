@@ -68,7 +68,7 @@ function findByPlate($data, $members, $plateNumber) {
         }
     }
     
-    // 2. Search in members.json (for imported members)
+    // 2. Search in members.json (for old/imported members NOT in current championship)
     if (empty($results)) {
         foreach ($members as $code => $member) {
             $matched = false;
@@ -77,9 +77,9 @@ function findByPlate($data, $members, $plateNumber) {
             if (!$matched && plateMatches($member['plate_full'] ?? '', $plateNumber)) $matched = true;
             
             if ($matched) {
-                // Add registration_code and status if missing
                 $member['registration_code'] = $member['registration_code'] ?? $code;
-                $member['status'] = $member['status'] ?? 'approved'; // Members are approved by default
+                // FIXED: Old members NOT in data.json are NOT registered in current championship
+                $member['status'] = 'not_registered';
                 $results[] = $member;
             }
         }
@@ -113,11 +113,12 @@ function findByPhone($data, $members, $phone) {
         }
     }
     
-    // Search members.json
+    // Search members.json (old members NOT in current championship)
     foreach ($members as $code => $member) {
         if (cleanPhone($member['phone'] ?? '') === $cleanPhone) {
             $member['registration_code'] = $member['registration_code'] ?? $code;
-            $member['status'] = $member['status'] ?? 'approved';
+            // FIXED: Old members NOT in data.json are NOT registered in current championship
+            $member['status'] = 'not_registered';
             return $member;
         }
     }
@@ -270,6 +271,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             background: linear-gradient(135deg, rgba(220,53,69,0.2), rgba(200,35,51,0.2));
             border: 2px solid #dc3545;
         }
+        .status-not_registered {
+            background: linear-gradient(135deg, rgba(255,152,0,0.2), rgba(255,87,34,0.2));
+            border: 2px solid #ff9800;
+        }
         
         .status-icon { font-size: 60px; text-align: center; margin-bottom: 15px; }
         .status-text { font-size: 22px; font-weight: bold; text-align: center; margin-bottom: 5px; }
@@ -407,8 +412,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <?php 
         $status = $result['status'] ?? 'pending';
         $statusClass = 'status-' . $status;
-        $statusLabels = ['approved' => '✅ مقبول', 'pending' => '⏳ قيد المراجعة', 'rejected' => '❌ مرفوض'];
-        $statusIcons = ['approved' => '🎉', 'pending' => '⏳', 'rejected' => '😔'];
+        $statusLabels = [
+            'approved' => '✅ مقبول', 
+            'pending' => '⏳ قيد المراجعة', 
+            'rejected' => '❌ مرفوض',
+            'not_registered' => '⚠️ غير مسجل في البطولة الحالية'
+        ];
+        $statusIcons = [
+            'approved' => '🎉', 
+            'pending' => '⏳', 
+            'rejected' => '😔',
+            'not_registered' => '⚠️'
+        ];
     ?>
     
     <div class="card <?= $statusClass ?>">
@@ -419,6 +434,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 تهانينا! تم قبول تسجيلك بنجاح
             <?php elseif ($status === 'pending'): ?>
                 طلبك قيد المراجعة، يرجى الانتظار
+            <?php elseif ($status === 'not_registered'): ?>
+                أنت عضو قديم لكنك لم تسجل في البطولة الحالية بعد. يرجى التسجيل أولاً.
             <?php else: ?>
                 عذراً، تم رفض طلبك
             <?php endif; ?>

@@ -27,11 +27,14 @@ try {
         ];
     }
     
-    // Load Data for total participants (approved + specific participation_type)
+    // Load Data for total participants (approved + specific participation_type + entered gate)
+    // NOTE: total_participants = ONLY those who entered through the main gate (has_entered=true)
+    // This way the rounds operator knows how many are ACTUALLY inside the garage
     $dataFile = __DIR__ . '/../admin/data/data.json';
     $totalParticipants = 0;
+    $totalRegistered = 0; // All approved free_show (for reference)
     $allowedTypes = ['المشاركة بالاستعراض الحر', 'free_show']; // Filter for rounds
-    $eligiblePids = []; // List of eligible participant wasel IDs
+    $eligiblePids = []; // List of eligible participant wasel IDs (gate-entered only)
 
     if (file_exists($dataFile)) {
         $data = json_decode(file_get_contents($dataFile), true) ?? [];
@@ -39,8 +42,13 @@ try {
             $isApproved = ($reg['status'] ?? '') === 'approved';
             $pType = $reg['participation_type'] ?? '';
             if ($isApproved && in_array($pType, $allowedTypes)) {
-                $totalParticipants++;
-                $eligiblePids[] = $reg['wasel'] ?? '';
+                $totalRegistered++;
+                // Only count those who actually entered through the main gate
+                $hasEntered = !empty($reg['has_entered']);
+                if ($hasEntered) {
+                    $totalParticipants++;
+                    $eligiblePids[] = $reg['wasel'] ?? '';
+                }
             }
         }
     }

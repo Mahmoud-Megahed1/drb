@@ -467,20 +467,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["action"]) && $_POST["
         $membersFile = 'admin/data/members.json';
         if (file_exists($membersFile)) {
             $members = json_decode(file_get_contents($membersFile), true) ?? [];
+            
+            // Normalize the new registrant's name for comparison
+            $newNameNorm = mb_strtolower(trim(preg_replace('/\s+/u', ' ', $_POST['full_name'] ?? '')), 'UTF-8');
+            
             foreach ($members as $mCode => $member) {
-                // Match by phone
+                // Match by phone (primary)
                 $p1 = substr(preg_replace('/[^0-9]/', '', $member['phone'] ?? ''), -10);
                 $p2 = substr(preg_replace('/[^0-9]/', '', $_POST['phone'] ?? ''), -10);
                 if ($p1 === $p2 && !empty($p1)) {
                     $usedRegCode = $mCode;
                     break;
                 }
-                // Match by plate
+                // Match by plate (secondary)
                 $mp_num = normalizePlateStr($member['plate_number'] ?? '');
                 $mp_let = normalizePlateStr($member['plate_letter'] ?? '');
                 $mp_gov = normalizePlateStr($member['plate_governorate'] ?? '');
                 if ($mp_num !== '' && $mp_let !== '' && $mp_gov !== '' &&
                     $mp_num === $np_num && $mp_let === $np_let && $mp_gov === $np_gov) {
+                    $usedRegCode = $mCode;
+                    break;
+                }
+                // FIXED: Match by full name (tertiary - for old members with empty plates)
+                $memberNameNorm = mb_strtolower(trim(preg_replace('/\s+/u', ' ', $member['full_name'] ?? $member['name'] ?? '')), 'UTF-8');
+                if (!empty($memberNameNorm) && !empty($newNameNorm) && $memberNameNorm === $newNameNorm) {
                     $usedRegCode = $mCode;
                     break;
                 }
@@ -591,9 +601,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["action"]) && $_POST["
             
             // MIME type validation — reject files that pretend to be images
             $allowedMimes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/heif'];
-            $finfo = finfo_open(FILEINFO_MIME_TYPE);
-            $detectedMime = finfo_file($finfo, $file['tmp_name']);
-            finfo_close($finfo);
+            $finfo = new finfo(FILEINFO_MIME_TYPE);
+            $detectedMime = $finfo->file($file['tmp_name']);
             if (!in_array($detectedMime, $allowedMimes)) {
                 http_response_code(400);
                 echo 'الملف ليس صورة حقيقية: ' . $fileField . ' (النوع المكتشف: ' . htmlspecialchars($detectedMime) . '). يرجى رفع صورة بصيغة JPG أو PNG أو WebP.';
@@ -602,7 +611,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST["action"]) && $_POST["
             }
             
             // Generate unique filename
-            $filename = $memberId . '_' . $fileField . '_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+            $filename = $wasel . '_' . $fileField . '_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
             $filepath = $uploadDir . $filename;
             
             // Move uploaded file WITHOUT compression (Fast Track) to prevent 503 Server Timeouts

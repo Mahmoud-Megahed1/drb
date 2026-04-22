@@ -80,7 +80,7 @@ try {
                 ],
                 'status' => [
                     'has_blocker' => false,
-                    'is_current_participant' => true 
+                    'is_current_participant' => false  // DB endpoint - not verified against current championship
                 ],
                 'stats' => $stats,
                 'violations' => $violations,

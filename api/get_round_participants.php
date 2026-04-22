@@ -28,12 +28,14 @@ try {
         $allParticipants = json_decode(file_get_contents($dataFile), true) ?? [];
     }
     
-    // Filter approved + allowed type
+    // Filter approved + allowed type + entered through main gate
+    // Only show participants who are actually inside the garage (has_entered=true)
     $allowedTypes = ['المشاركة بالاستعراض الحر', 'free_show'];
     $eligibleParticipants = array_filter($allParticipants, function($reg) use ($allowedTypes) {
         $isApproved = ($reg['status'] ?? '') === 'approved';
         $pType = $reg['participation_type'] ?? '';
-        return $isApproved && in_array($pType, $allowedTypes);
+        $hasEntered = !empty($reg['has_entered']); // Must have entered main gate
+        return $isApproved && in_array($pType, $allowedTypes) && $hasEntered;
     });
 
     // 2. Load Logs to find who entered

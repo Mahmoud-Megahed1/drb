@@ -130,7 +130,8 @@ function getParticipationTypes($settings) {
     return $settings['participation_types'] ?? [
         ['id' => 'free_show', 'label' => 'المشاركة بالاستعراض الحر', 'enabled' => true],
         ['id' => 'special_car', 'label' => 'المشاركة كسيارة مميزة فقط بدون استعراض', 'enabled' => true],
-        ['id' => 'burnout', 'label' => 'المشاركة بفعالية Burnout', 'enabled' => true]
+        ['id' => 'burnout', 'label' => 'المشاركة بفعالية Burnout', 'enabled' => true],
+        ['id' => 'motorbikes', 'label' => 'دراجات', 'enabled' => true]
     ];
 }
 

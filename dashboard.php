@@ -39,6 +39,7 @@ if (isset($currentUser->username) && $currentUser->username === 'scanner') {
 
 $filterValue = $_GET['filterValue'] ?? 'all';
 $statusFilter = $_GET['status'] ?? 'all';
+$partTypeFilter = $_GET['part_type'] ?? 'all';
 
 // Handle resend message request
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'resend_message') {
@@ -80,7 +81,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 }
 
 // Load data
-function loadJsonData($file, $filterValue, $statusFilter) {
+function loadJsonData($file, $filterValue, $statusFilter, $partTypeFilter = 'all') {
     $file_path = 'admin/data/' . $file . '.json';
     if (!file_exists($file_path)) return [];
 
@@ -100,10 +101,15 @@ function loadJsonData($file, $filterValue, $statusFilter) {
         $data = array_filter($data, fn($item) => ($item['status'] ?? 'pending') === $statusFilter);
     }
     
+    // Filter by participation type
+    if ($partTypeFilter !== 'all') {
+        $data = array_filter($data, fn($item) => ($item['participation_type'] ?? '') === $partTypeFilter);
+    }
+    
     return $data;
 }
 
-$inputs = loadJsonData('data', $filterValue, $statusFilter);
+$inputs = loadJsonData('data', $filterValue, $statusFilter, $partTypeFilter);
 
 // Get site settings
 $siteSettings = [];
@@ -150,7 +156,8 @@ if (empty($participationLabels)) {
     $participationLabels = [
         'free_show' => 'استعراض حر',
         'special_car' => 'سيارة مميزة',
-        'burnout' => 'Burnout'
+        'burnout' => 'Burnout',
+        'motorbikes' => 'دراجات'
     ];
 }
 ?>
@@ -521,6 +528,15 @@ if (empty($participationLabels)) {
                 </select>
             </div>
             <div class="col-md-3">
+                <label>نوع المشاركة:</label>
+                <select id="partTypeFilter" class="form-control">
+                    <option value="all" <?= $partTypeFilter === 'all' ? 'selected' : '' ?>>الكل</option>
+                    <?php foreach ($participationLabels as $key => $label): ?>
+                        <option value="<?= htmlspecialchars($key) ?>" <?= $partTypeFilter === $key ? 'selected' : '' ?>><?= htmlspecialchars($label) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="col-md-3">
                 <label>&nbsp;</label>
                 <button class="btn btn-primary form-control" onclick="applyFilters()">🔍 تطبيق الفلتر</button>
             </div>
@@ -631,14 +647,14 @@ if (empty($participationLabels)) {
                             </span>
                         </td>
                         <td><?= $participationLabels[$input['participation_type'] ?? ''] ?? ($input['participation_type_label'] ?? ($input['participation_type'] ?? '-')) ?></td>
-                        <td><strong><?= htmlspecialchars($input['full_name'] ?? $input['name'] ?? '-') ?></strong></td>
+                        <td><strong><?= !empty($input['full_name']) ? htmlspecialchars($input['full_name']) : (!empty($input['name']) ? htmlspecialchars($input['name']) : '-') ?></strong></td>
                         <td dir="ltr"><?= htmlspecialchars(($input['country_code'] ?? '') . ($input['phone'] ?? '')) ?></td>
                         <td dir="ltr"><?= htmlspecialchars($input['instagram'] ?? '-') ?></td>
-                        <td><?= htmlspecialchars($input['governorate'] ?? '-') ?></td>
-                        <td><strong><?= htmlspecialchars($input['car_type'] ?? '-') ?></strong></td>
-                        <td><?= $input['car_year'] ?? '-' ?></td>
-                        <td><?= htmlspecialchars($input['car_color'] ?? '-') ?></td>
-                        <td><small><?= $engineLabels[$input['engine_size'] ?? ''] ?? ($input['engine_size_label'] ?? $input['engine_size'] ?? '-') ?></small></td>
+                        <td><?= !empty($input['governorate']) ? htmlspecialchars($input['governorate']) : '-' ?></td>
+                        <td><strong><?= !empty($input['car_type']) ? htmlspecialchars($input['car_type']) : '-' ?></strong></td>
+                        <td><?= !empty($input['car_year']) ? $input['car_year'] : '-' ?></td>
+                        <td><?= !empty($input['car_color']) ? htmlspecialchars($input['car_color']) : '-' ?></td>
+                        <td><small><?= !empty($input['engine_size']) ? ($engineLabels[$input['engine_size']] ?? ($input['engine_size_label'] ?? $input['engine_size'])) : '-' ?></small></td>
                         <td>
                             <span class="plate-badge" dir="rtl">
                                 <?= htmlspecialchars($input['plate_governorate'] ?? '') ?> - 
@@ -680,7 +696,7 @@ if (empty($participationLabels)) {
                             <span class="text-muted">لا توجد صور</span>
                             <?php endif; ?>
                         </td>
-                        <td><small><?= $input['registration_date'] ?? $input['order_date'] ?? '-' ?></small></td>
+                        <td><small><?= !empty($input['registration_date']) ? $input['registration_date'] : (!empty($input['order_date']) ? $input['order_date'] : '-') ?></small></td>
                         <td>
                             <?php 
                             $isImported = !empty($input['import_source']) || ($input['register_type'] ?? '') === 'imported';
@@ -1096,7 +1112,12 @@ $(document).ready(function() {
 function applyFilters() {
     var filterValue = $('#filterValue').val();
     var statusFilter = $('#statusFilter').val();
-    window.location.href = '?filterValue=' + filterValue + '&status=' + statusFilter;
+    var partTypeFilter = $('#partTypeFilter').val();
+    var url = '?filterValue=' + filterValue + '&status=' + statusFilter;
+    if (partTypeFilter && partTypeFilter !== 'all') {
+        url += '&part_type=' + partTypeFilter;
+    }
+    window.location.href = url;
 }
 
 function showImage(src, title) {

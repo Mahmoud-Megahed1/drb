@@ -8,8 +8,8 @@ import ftplib
 import os
 
 FTP_HOST = "145.223.86.39"
-FTP_USER = "u662618977"
-FTP_PASS = "Mm@123456789"
+FTP_USER = "u670530239"
+FTP_PASS = "u?j?4F9wX/#r45R@"
 REMOTE_DIR = "domains/yellowgreen-quail-410393.hostingersite.com/public_html"
 
 FILES = [

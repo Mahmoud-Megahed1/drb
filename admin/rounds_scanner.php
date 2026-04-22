@@ -330,7 +330,7 @@ $user = getCurrentUser();
             </div>
             <div class="stat-card blue">
                 <div class="number" id="statRemaining">0</div>
-                <div class="label">المتبقي</div>
+                <div class="label">متبقي بالجراج</div>
             </div>
         </div>
         
