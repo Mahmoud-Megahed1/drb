@@ -893,7 +893,7 @@ function saveImage() {
         // Attempt to get data URL - this will throw if canvas is tainted
         const canvasData = canvas.toDataURL('image/png');
         
-        fetch('save_edited_image.php', {
+        fetch('generate_acceptance.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

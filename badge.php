@@ -426,6 +426,21 @@ if (file_exists($frameSettingsFile)) {
                 <?= htmlspecialchars($reg['car_type'] ?? '') ?> | <?= htmlspecialchars(($reg['plate_governorate'] ?? '') . ' ' . ($reg['plate_letter'] ?? '') . ' ' . ($reg['plate_number'] ?? '')) ?>
             </div>
             <?php endif; ?>
+            <?php if (!empty($reg['acceptance_image'])): ?>
+            <div style="margin-top: 15px;">
+                <a href="<?= htmlspecialchars($reg['acceptance_image']) ?>" target="_blank" class="btn" style="background: var(--accent); color: #000; padding: 10px 20px; border-radius: 25px; font-weight: bold; text-decoration: none; display: inline-block;">
+                    <i class="fa-solid fa-image"></i> عرض فريم القبول
+                </a>
+            </div>
+            <?php endif; ?>
+
+            <?php if ($isAdmin): ?>
+            <div style="margin-top: 10px;">
+                <a href="admin/visual_editor.php?wasel=<?= $reg['wasel'] ?>" class="btn" style="background: #007bff; color: #fff; padding: 8px 15px; border-radius: 20px; font-size: 13px; text-decoration: none; display: inline-block;">
+                    <i class="fa-solid fa-pen-to-square"></i> تعديل الفريم (أدمن)
+                </a>
+            </div>
+            <?php endif; ?>
         </div>
 
         <?php if ($qrOnlyMode): ?>

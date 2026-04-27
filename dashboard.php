@@ -720,8 +720,13 @@ if (empty($participationLabels)) {
                                     ];
                                     $msgPrefsJson = json_encode($msgPrefs, JSON_HEX_APOS | JSON_HEX_QUOT);
                                 ?>
+                                <?php if (!empty($input['acceptance_image'])): ?>
+                                <a href="<?= htmlspecialchars($input['acceptance_image']) ?>" target="_blank" class="btn btn-info btn-sm" style="margin-bottom: 3px;">
+                                    🖼️ عرض الفريم
+                                </a>
+                                <?php endif; ?>
                                 <a href="admin/visual_editor.php?wasel=<?= $input['wasel'] ?>" class="btn btn-primary btn-sm" style="margin-bottom: 3px;">
-                                    🎨 تعديل الصورة
+                                    🎨 تعديل الفريم
                                 </a>
                                 <a href="admin/member_details.php?id=<?= urlencode($input['registration_code'] ?? $input['member_id'] ?? '') ?>" class="btn btn-default btn-sm" style="margin-bottom: 3px;" target="_blank">
                                     👤 الملف الشخصي
@@ -736,6 +741,14 @@ if (empty($participationLabels)) {
                                     ❌ رفض
                                 </button>
                                 <?php elseif ($status === 'approved' && ($canApprove || $canSendWhatsapp)): ?>
+                                <?php if (!empty($input['acceptance_image'])): ?>
+                                <a href="<?= htmlspecialchars($input['acceptance_image']) ?>" target="_blank" class="btn btn-info btn-sm" style="margin-bottom: 3px;">
+                                    🖼️ عرض الفريم
+                                </a>
+                                <?php endif; ?>
+                                <a href="admin/visual_editor.php?wasel=<?= $input['wasel'] ?>" class="btn btn-primary btn-sm" style="margin-bottom: 3px;">
+                                    🎨 تعديل الفريم
+                                </a>
                                 <a href="admin/member_details.php?id=<?= urlencode($input['registration_code'] ?? $input['member_id'] ?? '') ?>" class="btn btn-default btn-sm" style="margin-bottom: 3px;" target="_blank">
                                     👤 الملف الشخصي
                                 </a>

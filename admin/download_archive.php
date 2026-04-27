@@ -14,7 +14,7 @@ if (!isset($_SESSION['user']) || empty($_SESSION['user'])) {
 $filename = $_GET['file'] ?? '';
 
 // Validate filename (only allow archive files)
-if (!preg_match('/^data_archive_[\d\-_]+\.json$/', $filename)) {
+if (!preg_match('/^(data_archive|championship)_[\w\-_]+\.json$/', $filename)) {
     http_response_code(400);
     die('ملف غير صالح');
 }

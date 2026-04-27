@@ -87,6 +87,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $message = "حدث خطأ أثناء مسح السجلات: " . $e->getMessage();
             $messageType = 'error';
         }
+    } elseif ($_POST['action'] === 'delete_archive' && isset($_POST['filename'])) {
+        $filename = basename($_POST['filename']);
+        $filePath = $archiveDir . $filename;
+        if (file_exists($filePath)) {
+            if (unlink($filePath)) {
+                $message = "تم حذف الأرشيف بنجاح!";
+                $messageType = 'success';
+            } else {
+                $message = "فشل في حذف الأرشيف.";
+                $messageType = 'error';
+            }
+        } else {
+            $message = "الأرشيف غير موجود.";
+            $messageType = 'error';
+        }
     } elseif ($_POST['action'] === 'start_new' && isset($_POST['confirm']) && $_POST['confirm'] === 'yes') {
         try {
             // Disable Foreign Keys during critical reset phase to prevent constraint violations
@@ -344,15 +359,45 @@ if (file_exists($dataFile)) {
 // Archives List (Optimized)
 $archives = [];
 if (file_exists($archiveDir)) {
-    $files = glob($archiveDir . 'data_archive_*.json');
+    $files1 = glob($archiveDir . 'data_archive_*.json') ?: [];
+    $files2 = glob($archiveDir . 'championship_*.json') ?: [];
+    $files = array_merge($files1, $files2);
+    
     if ($files) {
         foreach ($files as $file) {
+            $champName = 'البطولة المؤرشفة';
+            $count = 0;
+            
+            // Read basic info without decoding the whole file if possible, but decoding is safer
+            $content = json_decode(file_get_contents($file), true);
+            if ($content) {
+                if (isset($content['data']) && is_array($content['data']) && count($content['data']) > 0) {
+                    $champName = $content['data'][0]['championship_name'] ?? $champName;
+                    $count = $content['count'] ?? count($content['data']);
+                } else if (is_array($content) && !isset($content['data'])) {
+                    $count = count($content);
+                    if ($count > 0 && isset($content[0]['championship_name'])) {
+                        $champName = $content[0]['championship_name'];
+                    }
+                }
+            }
+            
+            // Extract date from filename if available
+            $dateStr = date('Y-m-d H:i', filemtime($file));
+            if (preg_match('/championship_(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})/', basename($file), $m)) {
+                $dateStr = substr($m[1], 0, 10) . ' ' . str_replace('-', ':', substr($m[1], 11));
+            }
+            
             $archives[] = [
                 'filename' => basename($file),
-                'date' => date('Y-m-d H:i', filemtime($file))
+                'date' => $dateStr,
+                'name' => $champName,
+                'count' => $count
             ];
         }
-        rsort($archives);
+        usort($archives, function($a, $b) {
+            return strtotime($b['date']) - strtotime($a['date']);
+        });
     }
 }
 ?>
@@ -460,15 +505,33 @@ if (file_exists($archiveDir)) {
 
         <?php if($archives): ?>
         <div class="box">
-            <h3>الأرشيف</h3>
-            <ul>
+            <h3><i class="fa-solid fa-box-archive"></i> أرشيف البطولات السابقة</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
             <?php foreach($archives as $a): ?>
-                <li>
-                    <?= $a['date'] ?> - 
-                    <a href="download_archive.php?file=<?= $a['filename'] ?>" style="color: #ffc107;">تحميل <?= $a['filename'] ?></a>
-                </li>
+                <div class="p-4 border rounded shadow-sm bg-gray-50 flex flex-col justify-between" style="border-right: 4px solid #1a56db;">
+                    <div class="mb-3">
+                        <h4 class="font-bold text-lg mb-1" style="color: #1a56db;"><?= htmlspecialchars($a['name']) ?></h4>
+                        <p class="text-sm text-gray-600 mb-1"><i class="fa-regular fa-calendar ml-1"></i> تاريخ الأرشفة: <span dir="ltr" class="font-semibold"><?= $a['date'] ?></span></p>
+                        <p class="text-sm text-gray-600"><i class="fa-solid fa-users ml-1"></i> عدد المشاركين: <span class="font-semibold"><?= $a['count'] ?></span></p>
+                    </div>
+                    <div class="flex gap-2">
+                        <a href="view_archive.php?file=<?= $a['filename'] ?>" class="btn flex-1 flex items-center justify-center gap-2" style="background:#3b82f6; color:#fff; text-decoration: none;">
+                            <i class="fa-solid fa-eye"></i> عرض
+                        </a>
+                        <a href="download_archive.php?file=<?= $a['filename'] ?>" class="btn flex-1 flex items-center justify-center gap-2" style="background:#ffc107; color:#000; text-decoration: none;">
+                            <i class="fa-solid fa-download"></i> تحميل
+                        </a>
+                        <form method="POST" onsubmit="return confirm('هل أنت متأكد من حذف هذا الأرشيف؟');" class="flex-1">
+                            <input type="hidden" name="action" value="delete_archive">
+                            <input type="hidden" name="filename" value="<?= $a['filename'] ?>">
+                            <button type="submit" class="btn w-full flex items-center justify-center gap-2" style="background:#fee2e2; color:#dc2626; border: 1px solid #fca5a5;">
+                                <i class="fa-solid fa-trash-can"></i> حذف
+                            </button>
+                        </form>
+                    </div>
+                </div>
             <?php endforeach; ?>
-            </ul>
+            </div>
         </div>
         <?php endif; ?>
         
