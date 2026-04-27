@@ -20,7 +20,7 @@ class MemberService
     /**
      * Get full member profile with all statistics
      * 
-     * @param string $permanentCode Member's permanent code
+     * @param string $inputCode Member's permanent code, wasel, or badge token
      * @return array|null Profile data or null if not found
      */
     public static function getProfile($inputCode)
@@ -1083,11 +1083,6 @@ class MemberService
     }
 
     /**
-     * Get or create member (for registration)
-     * 
-     * @param string $phone Phone number (will be normalized)
-     * @param string $name Full name
-     * @param string|null $governorate Governorate
      * Get or create member (Internal Primitive)
      * 
      * WARNING: For bulk imports, use importMember() instead to ensure 
