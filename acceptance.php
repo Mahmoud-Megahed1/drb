@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // Prevent browser caching
 header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Cache-Control: post-check=0, pre-check=0", false);
@@ -9,6 +9,9 @@ header("Pragma: no-cache");
  * - لو عنده saved_frame_settings → يستخدمها (إعدادات وقت القبول)
  * - غير كده → يستخدم الإعدادات العامة الحالية
  */
+
+session_start();
+$isAdmin = isset($_SESSION['user']) && !empty($_SESSION['user']);
 
 $token = $_GET['token'] ?? '';
 $wasel = $_GET['id'] ?? $_GET['wasel'] ?? '';
@@ -29,8 +32,8 @@ if (!$registration) {
     exit;
 }
 
-// If not approved yet
-if (($registration['status'] ?? '') !== 'approved') {
+// If not approved yet, only allow admins to view
+if (($registration['status'] ?? '') !== 'approved' && !$isAdmin) {
     http_response_code(403);
     echo '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>قيد المراجعة</title><link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet"><style>body{font-family:"Cairo",sans-serif;background:#1a1a2e;min-height:100vh;display:flex;align-items:center;justify-content:center;color:#fff;text-align:center;padding:20px}.c{max-width:400px}.i{font-size:80px;margin-bottom:20px}h1{font-size:24px;margin-bottom:10px}p{opacity:.7}</style></head><body><div class="c"><div class="i">⏳</div><h1>لم تتم الموافقة بعد</h1><p>طلبك قيد المراجعة</p><p>رقم التسجيل: #' . htmlspecialchars($registration['wasel'] ?? '') . '</p></div></body></html>';
     exit;

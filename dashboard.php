@@ -721,9 +721,8 @@ if (empty($participationLabels)) {
                                     $msgPrefsJson = json_encode($msgPrefs, JSON_HEX_APOS | JSON_HEX_QUOT);
                                 ?>
                                 <?php 
-                                    $frameUrl = !empty($input['acceptance_image']) 
-                                        ? htmlspecialchars($input['acceptance_image']) 
-                                        : "admin/visual_editor.php?wasel=" . urlencode($input['wasel']) . "&view_only=1";
+                                    $token = $input['badge_token'] ?? $input['session_badge_token'] ?? $input['registration_code'] ?? $input['wasel'];
+                                    $frameUrl = "acceptance.php?token=" . urlencode($token);
                                 ?>
                                 <a href="<?= $frameUrl ?>" target="_blank" class="btn btn-info btn-sm" style="margin-bottom: 3px;">
                                     🖼️ عرض الفريم
@@ -745,9 +744,8 @@ if (empty($participationLabels)) {
                                 </button>
                                 <?php elseif ($status === 'approved' && ($canApprove || $canSendWhatsapp)): ?>
                                 <?php 
-                                    $frameUrl = !empty($input['acceptance_image']) 
-                                        ? htmlspecialchars($input['acceptance_image']) 
-                                        : "admin/visual_editor.php?wasel=" . urlencode($input['wasel']) . "&view_only=1";
+                                    $token = $input['badge_token'] ?? $input['session_badge_token'] ?? $input['registration_code'] ?? $input['wasel'];
+                                    $frameUrl = "acceptance.php?token=" . urlencode($token);
                                 ?>
                                 <a href="<?= $frameUrl ?>" target="_blank" class="btn btn-info btn-sm" style="margin-bottom: 3px;">
                                     🖼️ عرض الفريم
