@@ -8,21 +8,7 @@ if (!isset($_SESSION['user']) || empty($_SESSION['user'])) {
 
 // Get registration data
 $wasel = $_GET['wasel'] ?? '';
-$imageType = $_GET['img'] ?? 'personal'; // 'personal' or 'car'
-$dataFile = 'data/data.json';
-$registration = null;
-
-if (!empty($wasel) && file_exists($dataFile)) {
-    $data = json_decode(file_get_contents($dataFile), true);
-    foreach ($data as $item) {
-        if ($item['wasel'] == $wasel) {
-            $registration = $item;
-            break;
-        }
-    }
-}
-
-// Load frame settings - PRIORITY: Use registration's saved settings first!
+// Load frame settings first to determine default image type
 $frameSettingsFile = 'data/frame_settings.json';
 $frameSettings = [
     'frame_image' => 'images/acceptance_frame.png',
@@ -37,11 +23,39 @@ $frameSettings = [
     ]
 ];
 
+// Determine primary image type from settings if not explicitly passed
+$imageType = $_GET['img'] ?? null;
+$dataFile = 'data/data.json';
+$registration = null;
+
+if (!empty($wasel) && file_exists($dataFile)) {
+    $data = json_decode(file_get_contents($dataFile), true);
+    foreach ($data as $item) {
+        if ($item['wasel'] == $wasel) {
+            $registration = $item;
+            break;
+        }
+    }
+}
+
 // *** FIXED: Use registration's saved_frame_settings FIRST if available ***
 if (!empty($registration['saved_frame_settings'])) {
     $frameSettings = array_merge($frameSettings, $registration['saved_frame_settings']);
 } elseif (file_exists($frameSettingsFile)) {
     $frameSettings = array_merge($frameSettings, json_decode(file_get_contents($frameSettingsFile), true));
+}
+
+// Set image type based on settings if not explicitly provided
+if (!$imageType) {
+    $personalEnabled = $frameSettings['elements']['personal_photo']['enabled'] ?? true;
+    $carEnabled = $frameSettings['elements']['car_image']['enabled'] ?? false;
+    
+    // If car is enabled and personal is NOT, or if user explicitly wants car
+    if ($carEnabled && !$personalEnabled) {
+        $imageType = 'car';
+    } else {
+        $imageType = 'personal';
+    }
 }
 
 // Get frame image - search in multiple locations
@@ -81,16 +95,19 @@ if (!$frameImage || !file_exists($frameImage)) {
 
 // Get selected image based on type
 $selectedImage = '';
-$carImage = '';
 if ($registration) {
-    if (!empty($registration['images']['personal_photo'])) {
-        $selectedImage = '../' . $registration['images']['personal_photo'];
-    } elseif (!empty($registration['images']['front_image'])) {
-        $selectedImage = '../' . $registration['images']['front_image'];
-    }
-    
-    if (!empty($registration['images']['front_image'])) {
-        $carImage = '../' . $registration['images']['front_image'];
+    if ($imageType === 'car') {
+        if (!empty($registration['images']['front_image'])) {
+            $selectedImage = '../' . $registration['images']['front_image'];
+        } elseif (!empty($registration['images']['personal_photo'])) {
+            $selectedImage = '../' . $registration['images']['personal_photo'];
+        }
+    } else {
+        if (!empty($registration['images']['personal_photo'])) {
+            $selectedImage = '../' . $registration['images']['personal_photo'];
+        } elseif (!empty($registration['images']['front_image'])) {
+            $selectedImage = '../' . $registration['images']['front_image'];
+        }
     }
 }
 
@@ -425,17 +442,18 @@ const ctx = canvas.getContext('2d');
 
 // Read settings from frame_settings
 const frameSettings = <?= json_encode($frameSettings['elements']) ?>;
-const photoSettings = frameSettings.personal_photo || {};
+const imageType = '<?= $imageType ?>';
+const photoSettings = imageType === 'car' ? (frameSettings.car_image || {}) : (frameSettings.personal_photo || {});
 
 // Initialize state with defaults
 let state = {
-    shape: photoSettings.shape || 'circle',
+    shape: photoSettings.shape || (imageType === 'car' ? 'square' : 'circle'),
     imageX: photoSettings.x || 50,
     imageY: photoSettings.y || 50,
     imageWidth: photoSettings.width || 35,
     imageHeight: photoSettings.height || 35,
     borderColor: photoSettings.border_color || '#FFD700',
-    borderWidth: photoSettings.border_width || 4,
+    borderWidth: photoSettings.border_width !== undefined ? photoSettings.border_width : 4,
     text: '',
     textX: 50,
     textY: 85,

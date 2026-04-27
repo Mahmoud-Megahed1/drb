@@ -720,11 +720,14 @@ if (empty($participationLabels)) {
                                     ];
                                     $msgPrefsJson = json_encode($msgPrefs, JSON_HEX_APOS | JSON_HEX_QUOT);
                                 ?>
-                                <?php if (!empty($input['acceptance_image'])): ?>
-                                <a href="<?= htmlspecialchars($input['acceptance_image']) ?>" target="_blank" class="btn btn-info btn-sm" style="margin-bottom: 3px;">
+                                <?php 
+                                    $frameUrl = !empty($input['acceptance_image']) 
+                                        ? htmlspecialchars($input['acceptance_image']) 
+                                        : "admin/visual_editor.php?wasel=" . urlencode($input['wasel']) . "&view_only=1";
+                                ?>
+                                <a href="<?= $frameUrl ?>" target="_blank" class="btn btn-info btn-sm" style="margin-bottom: 3px;">
                                     🖼️ عرض الفريم
                                 </a>
-                                <?php endif; ?>
                                 <a href="admin/visual_editor.php?wasel=<?= $input['wasel'] ?>" class="btn btn-primary btn-sm" style="margin-bottom: 3px;">
                                     🎨 تعديل الفريم
                                 </a>
@@ -741,11 +744,14 @@ if (empty($participationLabels)) {
                                     ❌ رفض
                                 </button>
                                 <?php elseif ($status === 'approved' && ($canApprove || $canSendWhatsapp)): ?>
-                                <?php if (!empty($input['acceptance_image'])): ?>
-                                <a href="<?= htmlspecialchars($input['acceptance_image']) ?>" target="_blank" class="btn btn-info btn-sm" style="margin-bottom: 3px;">
+                                <?php 
+                                    $frameUrl = !empty($input['acceptance_image']) 
+                                        ? htmlspecialchars($input['acceptance_image']) 
+                                        : "admin/visual_editor.php?wasel=" . urlencode($input['wasel']) . "&view_only=1";
+                                ?>
+                                <a href="<?= $frameUrl ?>" target="_blank" class="btn btn-info btn-sm" style="margin-bottom: 3px;">
                                     🖼️ عرض الفريم
                                 </a>
-                                <?php endif; ?>
                                 <a href="admin/visual_editor.php?wasel=<?= $input['wasel'] ?>" class="btn btn-primary btn-sm" style="margin-bottom: 3px;">
                                     🎨 تعديل الفريم
                                 </a>
