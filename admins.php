@@ -1,5 +1,7 @@
 <?php
 
+
+
 $txt = '';
 
 require_once 'include/db.php';
@@ -92,23 +94,29 @@ if (isset($_POST['delete'])) {
 }
 
 if (isset($_POST['add'])) {
-  $role = $_POST['role'];
-  
-  $newAdmin = [
-    "name"     => $_POST['name'],
-    "username" => $_POST['username'],
-    "password" => $_POST['password'],
-    "role"     => $role
-  ];
-  
-  // Save to SQLite (if role is compatible)
-  syncUserToSqlite($_POST['username'], $_POST['password'], $role);
-  
-  // Save to JSON (always)
-  $admins[] = json_decode(json_encode($newAdmin));
-  
-  $txt = '<div class="alert alert-success">تمت الاضافة</div>';
-  file_put_contents($adminsFile, json_encode($admins, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+  try {
+      $role = $_POST['role'];
+      
+      $newAdmin = [
+        "name"     => $_POST['name'],
+        "username" => $_POST['username'],
+        "password" => $_POST['password'],
+        "role"     => $role
+      ];
+      
+      // Save to SQLite (if role is compatible)
+      syncUserToSqlite($_POST['username'], $_POST['password'], $role);
+      
+      // Save to JSON (always)
+      $admins[] = json_decode(json_encode($newAdmin));
+      
+      $txt = '<div class="alert alert-success">تمت الاضافة</div>';
+      file_put_contents($adminsFile, json_encode($admins, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+  } catch (Exception $e) {
+      die("<div class='alert alert-danger'>خطأ في النظام: " . $e->getMessage() . "</div>");
+  } catch (Error $e) {
+      die("<div class='alert alert-danger'>خطأ برمجي: " . $e->getMessage() . "</div>");
+  }
 }
 
 ?>
