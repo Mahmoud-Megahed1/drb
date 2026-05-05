@@ -6,10 +6,13 @@ if (!isset($_SESSION['user']) || empty($_SESSION['user'])) {
     exit;
 }
 
+require_once __DIR__ . '/../include/auth.php';
+
 $currentUser = $_SESSION['user'];
 $isRoot = (isset($currentUser->username) && $currentUser->username === 'root');
+$isAdmin = ($isRoot || (isset($currentUser->role) && $currentUser->role === 'admin' && isLoggedIn()));
 
-if (!$isRoot) {
+if (!$isAdmin) {
     header('location:../dashboard.php');
     exit;
 }

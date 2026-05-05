@@ -84,7 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit'])) {
 		$_SESSION['login_time'] = time();
 		
 		// Map roles
-		if ($_SESSION['user']->username === 'root' || $_SESSION['user']->role === 'root') {
+		if ($_SESSION['user']->username === 'root' || $_SESSION['user']->role === 'root' || $_SESSION['user']->role === 'admin') {
 		    $_SESSION['user_role'] = 'admin';
 		} elseif ($_SESSION['user']->username === 'scanner' || $_SESSION['user']->role === 'gate' || $_SESSION['user']->role === 'scanner') {
 		    $_SESSION['user_role'] = 'gate';
@@ -94,6 +94,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit'])) {
 		    $_SESSION['user_role'] = 'notes';
 		} elseif ($_SESSION['user']->role === 'whatsapp') {
 		    $_SESSION['user_role'] = 'admin';
+		} elseif ($_SESSION['user']->role === 'approver') {
+		    $_SESSION['user_role'] = 'approver';
 		} else {
 		    $_SESSION['user_role'] = 'viewer';
 		}

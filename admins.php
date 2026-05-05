@@ -11,9 +11,12 @@ if (!isset($_SESSION['user']) || empty($_SESSION['user'])) {
     exit;
 }
 
-// التحقق من أن المستخدم root
+// التحقق من أن المستخدم root أو مدير عام
 $currentUser = $_SESSION['user'];
-if (!isset($currentUser->username) || $currentUser->username !== 'root') {
+$isRoot = (isset($currentUser->username) && $currentUser->username === 'root');
+$isAdmin = ($isRoot || (isset($currentUser->role) && $currentUser->role === 'admin' && isLoggedIn()));
+
+if (!$isAdmin) {
     header('location:dashboard.php');
     exit;
 }
@@ -27,7 +30,7 @@ function syncUserToSqlite($username, $password, $role, $deviceName = 'Legacy Adm
     $pdo = db();
     
     // Only sync roles that exist in the SQLite schema
-    $sqliteRoles = ['admin', 'rounds', 'notes', 'gate'];
+    $sqliteRoles = ['admin', 'rounds', 'notes', 'gate', 'approver', 'viewer'];
     
     // Map legacy 'scanner' role to 'gate' if needed, or just skip if not compatible
     // The user has 'gate' role in dropdown now.

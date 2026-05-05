@@ -470,7 +470,7 @@ if (empty($participationLabels)) {
     </div>
     
     <!-- Badge Control Section -->
-    <?php if ($isRoot): ?>
+    <?php if ($isRoot || $userRole === 'admin'): ?>
     <div class="row" style="margin-bottom: 20px;">
         <div class="col-md-12">
             <div class="panel panel-default">

@@ -18,9 +18,9 @@ if (!isset($isRoot)) {
 $userRole = $currentUser->role ?? ($isRoot ? 'root' : 'viewer');
 if ($isRoot) $userRole = 'root';
 
-$canApprove = in_array($userRole, ['root', 'approver']);
-$canManageSettings = ($userRole === 'root');
-$canSendWhatsapp = in_array($userRole, ['root', 'whatsapp']);
+$canApprove = in_array($userRole, ['root', 'admin', 'approver']);
+$canManageSettings = in_array($userRole, ['root', 'admin']);
+$canSendWhatsapp = in_array($userRole, ['root', 'admin', 'whatsapp']);
 
 // Determine if we're in admin folder
 $inAdminFolder = (strpos(str_replace('\\', '/', $_SERVER['PHP_SELF']), '/admin/') !== false);
@@ -236,7 +236,7 @@ $adminPrefix = $inAdminFolder ? '' : 'admin/';
         </li>
         <?php endif; ?>
 
-        <?php if ($isRoot): ?>
+        <?php if ($isRoot || $userRole === 'admin'): ?>
         <li class="c-nav-item">
             <div class="c-nav-link <?= in_array($currentPage, ['admin_log', 'whatsapp_log', 'entry_logs', 'rounds_logs', 'view_notes']) ? 'active' : '' ?>" onclick="this.classList.toggle('toggled')">
                 <i class="fa-solid fa-chart-pie"></i> سجلات وتقارير <i class="fa-solid fa-caret-down" style="font-size: 10px;"></i>
@@ -265,7 +265,7 @@ $adminPrefix = $inAdminFolder ? '' : 'admin/';
                 <li><a href="<?= $adminPrefix ?>members.php" class="c-dropdown-item"><i class="fa-solid fa-users"></i> الأعضاء</a></li>
                 <?php endif; ?>
                 
-                <?php if ($isRoot): ?>
+                <?php if ($isRoot || $userRole === 'admin'): ?>
                 <li><a href="<?= $adminPrefix ?>qr_scanner.php" class="c-dropdown-item"><i class="fa-solid fa-camera"></i> ماسح QR (Admin)</a></li>
                 <li><a href="<?= $rootPrefix ?>gate.php" target="_blank" class="c-dropdown-item"><i class="fa-solid fa-door-open"></i> بوابة الدخول (مستقلة)</a></li>
                 <li class="c-divider"></li>
@@ -279,7 +279,7 @@ $adminPrefix = $inAdminFolder ? '' : 'admin/';
         </li>
         <?php endif; ?>
         
-        <?php if ($isRoot): ?>
+        <?php if ($isRoot || $userRole === 'admin'): ?>
         <li class="c-nav-item">
             <a href="<?= $rootPrefix ?>admins.php" class="c-nav-link <?= $currentPage === 'admins' ? 'active' : '' ?>">
                 <i class="fa-solid fa-user-shield"></i> المشرفين

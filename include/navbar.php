@@ -18,9 +18,9 @@ if (!isset($isRoot)) {
 $userRole = $currentUser->role ?? ($isRoot ? 'root' : 'viewer');
 if ($isRoot) $userRole = 'root';
 
-$canApprove = in_array($userRole, ['root', 'approver']);
-$canManageSettings = ($userRole === 'root');
-$canSendWhatsapp = in_array($userRole, ['root', 'whatsapp']);
+$canApprove = in_array($userRole, ['root', 'admin', 'approver']);
+$canManageSettings = in_array($userRole, ['root', 'admin']);
+$canSendWhatsapp = in_array($userRole, ['root', 'admin', 'whatsapp']);
 
 // Determine if we're in admin folder
 $inAdminFolder = (strpos(str_replace('\\', '/', $_SERVER['PHP_SELF']), '/admin/') !== false);
@@ -68,7 +68,7 @@ $adminPrefix = $inAdminFolder ? '' : 'admin/';
                 </li>
                 <?php endif; ?>
 
-                <?php if ($isRoot): ?>
+                <?php if ($isRoot || $userRole === 'admin'): ?>
                 <li class="dropdown <?= in_array($currentPage, ['admin_log', 'whatsapp_log', 'entry_logs', 'rounds_logs', 'view_notes']) ? 'active' : '' ?>">
                     <a href="#" class="dropdown-toggle" data-toggle="dropdown" style="<?= in_array($currentPage, ['admin_log', 'whatsapp_log', 'entry_logs', 'rounds_logs', 'view_notes']) ? 'color: #ffc107 !important; background: rgba(255,193,7,0.2) !important; border-bottom: 2px solid #ffc107;' : 'color: rgba(255,255,255,0.8);' ?>">
                         <i class="fa-solid fa-chart-pie"></i> سجلات وتقارير <span class="caret"></span>
@@ -99,7 +99,7 @@ $adminPrefix = $inAdminFolder ? '' : 'admin/';
                         <li><a href="<?= $adminPrefix ?>members.php" style="color: rgba(255,255,255,0.8);"><i class="fa-solid fa-users"></i> الأعضاء</a></li>
                         <?php endif; ?>
                         
-                        <?php if ($isRoot): ?>
+                        <?php if ($isRoot || $userRole === 'admin'): ?>
                         <li><a href="<?= $adminPrefix ?>qr_scanner.php" style="color: rgba(255,255,255,0.8);"><i class="fa-solid fa-camera"></i> ماسح QR (Admin)</a></li>
                         <li><a href="<?= $rootPrefix ?>gate.php" target="_blank" style="color: rgba(255,255,255,0.8);"><i class="fa-solid fa-door-open"></i> بوابة الدخول (مستقلة)</a></li>
                         <li class="divider"></li>
@@ -113,7 +113,7 @@ $adminPrefix = $inAdminFolder ? '' : 'admin/';
                 </li>
                 <?php endif; ?>
                 
-                <?php if ($isRoot): ?>
+                <?php if ($isRoot || $userRole === 'admin'): ?>
                 <li class="<?= $currentPage === 'admins' ? 'active' : '' ?>">
                     <a href="<?= $rootPrefix ?>admins.php" style="<?= $currentPage === 'admins' ? 'color: #ffc107 !important; background: rgba(255,193,7,0.2) !important; border-bottom: 2px solid #ffc107;' : 'color: rgba(255,255,255,0.8);' ?>">
                         <i class="fa-solid fa-user-shield"></i> المشرفين

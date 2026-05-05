@@ -14,7 +14,8 @@ define('PERMISSIONS', [
     'admin'  => ['rounds', 'notes', 'dashboard', 'settings', 'users', 'all'],
     'rounds' => ['rounds', 'view_notes_high', 'view_participant'],
     'notes'  => ['notes', 'view_participant'],
-    'gate'   => ['gate', 'notes', 'view_notes_high', 'view_participant']
+    'gate'   => ['gate', 'notes', 'view_notes_high', 'view_participant'],
+    'approver' => ['dashboard', 'registrations', 'approvals']
 ]);
 
 /**
@@ -132,12 +133,14 @@ function isLoggedIn() {
             $uName = $_SESSION['username'];
             $uRole = is_object($u) ? ($u->role ?? '') : ($u['role'] ?? '');
             
-            if ($uName === 'root' || $uRole === 'root') {
+            if ($uName === 'root' || $uRole === 'root' || $uRole === 'admin') {
                 $_SESSION['user_role'] = 'admin';
             } elseif ($uName === 'scanner' || $uRole === 'gate') {
                 $_SESSION['user_role'] = 'gate';
             } elseif ($uRole === 'whatsapp') {
                 $_SESSION['user_role'] = 'admin';
+            } elseif ($uRole === 'approver') {
+                $_SESSION['user_role'] = 'approver';
             } else {
                 $_SESSION['user_role'] = 'viewer';
             }
